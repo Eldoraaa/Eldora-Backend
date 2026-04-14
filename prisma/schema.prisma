@@ -1,0 +1,135 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  family
+  caregiver
+  admin
+}
+
+enum AlertPriority {
+  critical
+  high
+  medium
+  low
+}
+
+enum AlertStatus {
+  active
+  acknowledged
+  resolved
+}
+
+enum EventType {
+  emergency
+  assistance_request
+  service_request
+  sensor_anomaly
+  device_status
+}
+
+enum DeliveryStatus {
+  pending
+  sent
+  failed
+}
+
+// ─── Models ───────────────────────────────────────────────────────────────────
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      UserRole @default(family)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  elderProfiles      ElderProfile[]
+  notificationTokens NotificationToken[]
+  alertRecipients    AlertRecipient[]
+}
+
+model ElderProfile {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users   User[]
+  devices Device[]
+}
+
+model Device {
+  id        String    @id @default(cuid())
+  deviceId  String    @unique
+  deviceKey String    @unique
+  name      String?
+  isOnline  Boolean   @default(false)
+  lastSeen  DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  elderProfileId String
+  elderProfile   ElderProfile  @relation(fields: [elderProfileId], references: [id])
+  events         DeviceEvent[]
+}
+
+model DeviceEvent {
+  id        String        @id @default(cuid())
+  eventType EventType
+  priority  AlertPriority
+  payload   Json
+  timestamp DateTime      @default(now())
+
+  deviceId String
+  device   Device @relation(fields: [deviceId], references: [id])
+  alert    Alert?
+}
+
+model Alert {
+  id          String        @id @default(cuid())
+  title       String
+  description String
+  priority    AlertPriority
+  status      AlertStatus   @default(active)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  deviceEventId String?      @unique
+  deviceEvent   DeviceEvent? @relation(fields: [deviceEventId], references: [id])
+  recipients    AlertRecipient[]
+}
+
+model NotificationToken {
+  id        String   @id @default(cuid())
+  fcmToken  String   @unique
+  platform  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+}
+
+model AlertRecipient {
+  id             String         @id @default(cuid())
+  deliveryStatus DeliveryStatus @default(pending)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  alertId String
+  alert   Alert  @relation(fields: [alertId], references: [id])
+  userId  String
+  user    User   @relation(fields: [userId], references: [id])
+
+  @@unique([alertId, userId])
+}
