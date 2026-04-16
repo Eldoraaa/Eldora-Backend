@@ -13,4 +13,5 @@ export const config = {
   jwtSecret: requireEnv("JWT_SECRET"),
   jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? "7d",
   firebaseServiceAccountPath: process.env.FIREBASE_SERVICE_ACCOUNT_PATH ?? "./firebase-service-account.json",
+  googleWebClientId: requireEnv("GOOGLE_WEB_CLIENT_ID"),
 };

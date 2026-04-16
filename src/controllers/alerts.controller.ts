@@ -58,7 +58,7 @@ export async function getAlertById(req: Request, res: Response): Promise<void> {
   });
 
   if (!recipient) {
-    sendError(res, "Alert tidak ditemukan", 404);
+    sendError(res, "Alert not found", 404);
     return;
   }
 
@@ -70,7 +70,7 @@ export async function getAlertById(req: Request, res: Response): Promise<void> {
   });
 
   if (!alert) {
-    sendError(res, "Alert tidak ditemukan", 404);
+    sendError(res, "Alert not found", 404);
     return;
   }
 
@@ -86,7 +86,7 @@ export async function acknowledgeAlert(req: Request, res: Response): Promise<voi
   });
 
   if (!recipient) {
-    sendError(res, "Alert tidak ditemukan", 404);
+    sendError(res, "Alert not found", 404);
     return;
   }
 
@@ -95,5 +95,5 @@ export async function acknowledgeAlert(req: Request, res: Response): Promise<voi
     data: { status: "acknowledged" },
   });
 
-  sendSuccess(res, null, "Alert berhasil di-acknowledge");
+  sendSuccess(res, null, "Alert acknowledged successfully");
 }

@@ -25,10 +25,10 @@ export async function postEvent(req: Request, res: Response): Promise<void> {
     body.payload as Record<string, unknown>
   );
 
-  sendSuccess(res, result, "Event diterima", 201);
+  sendSuccess(res, result, "Event received", 201);
 }
 
 export async function postHeartbeat(req: Request, res: Response): Promise<void> {
   await processHeartbeat(req.device!.id);
-  sendSuccess(res, null, "Heartbeat diterima");
+  sendSuccess(res, null, "Heartbeat received");
 }

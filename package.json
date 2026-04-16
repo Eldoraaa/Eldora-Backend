@@ -4,16 +4,17 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "dev": "nodemon --watch src --ext ts --exec \"ts-node -r tsconfig-paths/register src/server.ts\"",
+    "dev": "nodemon --watch src --ext ts --exec \"ts-node --files -r tsconfig-paths/register src/server.ts\"",
     "build": "tsc",
     "start": "node dist/server.js",
-    "seed": "ts-node -r tsconfig-paths/register prisma/seed.ts"
+    "seed": "ts-node --files -r tsconfig-paths/register prisma/seed.ts"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@prisma/adapter-pg": "^7.7.0",
     "@prisma/client": "^7.7.0",
     "axios": "^1.15.0",
     "bcryptjs": "^3.0.3",
@@ -24,6 +25,7 @@
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.3",
     "morgan": "^1.10.1",
+    "pg": "^8.20.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
