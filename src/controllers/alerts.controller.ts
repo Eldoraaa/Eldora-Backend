@@ -1,14 +1,7 @@
 import { Request, Response } from "express";
-import { z } from "zod";
 import { prisma } from "@/config/database";
 import { sendSuccess, sendError } from "@/utils/response.utils";
-
-const listQuerySchema = z.object({
-  status: z.enum(["active", "acknowledged", "resolved"]).optional(),
-  priority: z.enum(["critical", "high", "medium", "low"]).optional(),
-  limit: z.coerce.number().int().min(1).max(100).default(20),
-  offset: z.coerce.number().int().min(0).default(0),
-});
+import { listQuerySchema } from "@/validations/alerts/alerts.validation";
 
 export async function getAlerts(req: Request, res: Response): Promise<void> {
   const query = listQuerySchema.parse(req.query);

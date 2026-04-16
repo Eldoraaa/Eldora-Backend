@@ -1,18 +1,7 @@
 import { Request, Response } from "express";
-import { z } from "zod";
 import { sendSuccess } from "@/utils/response.utils";
 import { processEvent, processHeartbeat } from "@/services/iot.service";
-
-const eventSchema = z.object({
-  eventType: z.enum([
-    "emergency",
-    "assistance_request",
-    "service_request",
-    "sensor_anomaly",
-    "device_status",
-  ]),
-  payload: z.record(z.string(), z.unknown()).default({}),
-});
+import { eventSchema } from "@/validations/iot/iot.validation";
 
 export async function postEvent(req: Request, res: Response): Promise<void> {
   const body = eventSchema.parse(req.body);

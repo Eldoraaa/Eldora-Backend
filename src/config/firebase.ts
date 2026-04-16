@@ -21,7 +21,72 @@ function isServiceAccount(value: unknown): value is RawServiceAccount {
   );
 }
 
+function normalizeServiceAccount(serviceAccount: RawServiceAccount): RawServiceAccount {
+  return {
+    ...serviceAccount,
+    private_key: serviceAccount.private_key.replace(/\\n/g, "\n"),
+  };
+}
+
+function readServiceAccount(): { serviceAccount: RawServiceAccount; source: string } | null {
+  if (config.firebaseServiceAccountJson) {
+    const parsed = JSON.parse(config.firebaseServiceAccountJson);
+    if (!isServiceAccount(parsed)) {
+      console.warn(
+        "[Firebase] Invalid service account JSON in FIREBASE_SERVICE_ACCOUNT_JSON - expected project_id, client_email, and private_key."
+      );
+      return null;
+    }
+
+    return {
+      serviceAccount: normalizeServiceAccount(parsed),
+      source: "FIREBASE_SERVICE_ACCOUNT_JSON",
+    };
+  }
+
+  const path = config.firebaseServiceAccountPath;
+  if (!fs.existsSync(path)) {
+    console.warn("[Firebase] Service account file not found - FCM disabled:", path);
+    return null;
+  }
+
+  const parsed = JSON.parse(fs.readFileSync(path, "utf-8"));
+  if (!isServiceAccount(parsed)) {
+    console.warn(
+      "[Firebase] Invalid service account JSON - expected Admin SDK key with project_id, client_email, and private_key. google-services.json will not work:",
+      path
+    );
+    return null;
+  }
+
+  return {
+    serviceAccount: normalizeServiceAccount(parsed),
+    source: path,
+  };
+}
+
 export function initFirebase(): void {
+  try {
+    const credential = readServiceAccount();
+    if (!credential) return;
+
+    const { serviceAccount, source } = credential;
+
+    admin.initializeApp({
+      credential: admin.credential.cert({
+        projectId: serviceAccount.project_id,
+        clientEmail: serviceAccount.client_email,
+        privateKey: serviceAccount.private_key,
+      }),
+    });
+    initialized = true;
+    console.log("[Firebase] Admin SDK initialized from", source);
+    return;
+  } catch (err) {
+    console.warn("[Firebase] Failed to initialize - FCM disabled:", err);
+    return;
+  }
+
   const path = config.firebaseServiceAccountPath;
   if (!fs.existsSync(path)) {
     console.warn("[Firebase] Service account file not found — FCM disabled:", path);
