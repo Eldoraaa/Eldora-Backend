@@ -2,11 +2,11 @@
   "name": "backend-eldora",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "dist/src/server.js",
   "scripts": {
     "dev": "nodemon --watch src --ext ts --exec \"ts-node --files -r tsconfig-paths/register src/server.ts\"",
     "build": "tsc",
-    "start": "node dist/server.js",
+    "start": "node dist/src/server.js",
     "seed": "ts-node --files -r tsconfig-paths/register prisma/seed.ts"
   },
   "keywords": [],
