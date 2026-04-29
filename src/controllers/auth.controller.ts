@@ -1,18 +1,14 @@
 import { Request, Response } from "express";
-import bcrypt from "bcryptjs";
-import { OAuth2Client } from "google-auth-library";
 import { prisma } from "@/config/database";
-import { config } from "@/config/env";
 import { signToken } from "@/utils/jwt.utils";
 import { sendSuccess, sendError } from "@/utils/response.utils";
+import { getAuth } from "@/config/firebase";
 import {
   loginSchema,
   registerSchema,
   googleLoginSchema,
   registerFcmSchema,
 } from "@/validations/auth/auth.validation";
-
-const googleClient = new OAuth2Client(config.googleWebClientId);
 
 function maskToken(token: string): string {
   if (token.length <= 10) return "***";
@@ -21,34 +17,27 @@ function maskToken(token: string): string {
 
 export async function login(req: Request, res: Response): Promise<void> {
   const body = loginSchema.parse(req.body);
-  console.log("[Auth/Login] Login attempt", { email: body.email });
+  console.log("[Auth/Login] Verifying Firebase password login token...");
 
-  const user = await prisma.user.findUnique({ where: { email: body.email } });
+  const firebaseAuth = getAuth();
+  if (!firebaseAuth) {
+    sendError(res, "Firebase is not initialized", 500);
+    return;
+  }
+
+  const decoded = await firebaseAuth.verifyIdToken(body.idToken);
+  const firebaseUid = decoded.uid;
+  const email = decoded.email;
+
+  if (!firebaseUid || !email) {
+    sendError(res, "Firebase token does not include a valid email", 400);
+    return;
+  }
+
+  const user = await prisma.user.findFirst({
+    where: { OR: [{ googleId: firebaseUid }, { email }] },
+  });
   if (!user) {
-    console.warn("[Auth/Login] Invalid credentials", { email: body.email });
-    sendError(res, "Invalid email or password", 401);
-    return;
-  }
-
-  if (!user.password) {
-    console.warn("[Auth/Login] Password login rejected for Google account", {
-      userId: user.id,
-      email: user.email,
-    });
-    sendError(
-      res,
-      "This account is registered with Google. Please sign in with Google.",
-      401,
-    );
-    return;
-  }
-
-  const valid = await bcrypt.compare(body.password, user.password);
-  if (!valid) {
-    console.warn("[Auth/Login] Invalid credentials", {
-      userId: user.id,
-      email: user.email,
-    });
     sendError(res, "Invalid email or password", 401);
     return;
   }
@@ -83,6 +72,26 @@ export async function register(req: Request, res: Response): Promise<void> {
   const body = registerSchema.parse(req.body);
   console.log("[Auth/Register] Registration attempt", { email: body.email });
 
+  const firebaseAuth = getAuth();
+  if (!firebaseAuth) {
+    sendError(res, "Firebase is not initialized", 500);
+    return;
+  }
+
+  const decoded = await firebaseAuth.verifyIdToken(body.idToken);
+  const firebaseUid = decoded.uid;
+  const tokenEmail = decoded.email;
+
+  if (!firebaseUid || !tokenEmail) {
+    sendError(res, "Firebase token does not include a valid email", 400);
+    return;
+  }
+
+  if (tokenEmail.toLowerCase() !== body.email.toLowerCase()) {
+    sendError(res, "Firebase token email must match registration email", 400);
+    return;
+  }
+
   const existing = await prisma.user.findUnique({
     where: { email: body.email },
   });
@@ -92,12 +101,11 @@ export async function register(req: Request, res: Response): Promise<void> {
     return;
   }
 
-  const hashedPassword = await bcrypt.hash(body.password, 10);
   const newUser = await prisma.user.create({
     data: {
       name: body.name,
       email: body.email,
-      password: hashedPassword,
+      googleId: firebaseUid,
     },
   });
 
@@ -117,17 +125,18 @@ export async function googleLogin(req: Request, res: Response): Promise<void> {
   console.log("[Auth/Google] idToken length:", body.idToken.length);
 
   try {
-    console.log("[Auth/Google] Verifying idToken with Google OAuth...");
-    const ticket = await googleClient.verifyIdToken({
-      idToken: body.idToken,
-      audience: config.googleWebClientId,
-    });
-    const payload = ticket.getPayload();
+    console.log("[Auth/Google] Verifying Firebase ID token...");
+    const firebaseAuth = getAuth();
+    if (!firebaseAuth) {
+      sendError(res, "Firebase is not initialized", 500);
+      return;
+    }
+    const decoded = await firebaseAuth.verifyIdToken(body.idToken);
 
-    const googleUid = payload?.sub;
-    const googleEmail = payload?.email;
-    const googleName = payload?.name;
-    const googlePicture = payload?.picture;
+    const googleUid = decoded.uid;
+    const googleEmail = decoded.email;
+    const googleName = decoded.name;
+    const googlePicture = decoded.picture;
 
     console.log("[Auth/Google] Token verified", {
       sub: googleUid,
