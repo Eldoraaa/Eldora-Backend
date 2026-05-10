@@ -15,31 +15,22 @@ enum UserRole {
   admin
 }
 
-enum AlertPriority {
-  critical
-  high
-  medium
-  low
+enum DeviceCommandType {
+  configure_wifi
 }
 
-enum AlertStatus {
-  active
-  acknowledged
-  resolved
-}
-
-enum EventType {
-  emergency
-  assistance_request
-  service_request
-  sensor_anomaly
-  device_status
-}
-
-enum DeliveryStatus {
+enum DeviceCommandStatus {
   pending
-  sent
+  delivered
+  applied
   failed
+}
+
+enum DevicePairingRequestStatus {
+  pending
+  approved
+  rejected
+  expired
 }
 
 // ─── Models ───────────────────────────────────────────────────────────────────
@@ -54,9 +45,8 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  elderProfiles      ElderProfile[]
-  notificationTokens NotificationToken[]
-  alertRecipients    AlertRecipient[]
+  elderProfiles   ElderProfile[]
+  pairingRequests DevicePairingRequest[] @relation("PairingRequester")
 }
 
 model ElderProfile {
@@ -70,67 +60,56 @@ model ElderProfile {
 }
 
 model Device {
-  id        String    @id @default(cuid())
-  deviceId  String    @unique
-  deviceKey String    @unique
-  name      String?
-  isOnline  Boolean   @default(false)
-  lastSeen  DateTime?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id                         String    @id @default(cuid())
+  deviceId                   String    @unique
+  deviceKey                  String    @unique
+  name                       String?
+  isOnline                   Boolean   @default(false)
+  lastSeen                   DateTime?
+  batteryLevel               Int?
+  isCharging                 Boolean   @default(false)
+  wifiSsid                   String?
+  wifiRssi                   Int?
+  localIp                    String?
+  localPairingToken          String?
+  localPairingTokenUpdatedAt DateTime?
+  firmwareVersion            String?
+  createdAt                  DateTime  @default(now())
+  updatedAt                  DateTime  @updatedAt
 
-  elderProfileId String
-  elderProfile   ElderProfile  @relation(fields: [elderProfileId], references: [id])
-  events         DeviceEvent[]
+  elderProfileId  String
+  elderProfile    ElderProfile           @relation(fields: [elderProfileId], references: [id])
+  commands        DeviceCommand[]
+  pairingRequests DevicePairingRequest[]
 }
 
-model DeviceEvent {
-  id        String        @id @default(cuid())
-  eventType EventType
-  priority  AlertPriority
-  payload   Json
-  timestamp DateTime      @default(now())
+model DeviceCommand {
+  id          String              @id @default(cuid())
+  commandType DeviceCommandType
+  payload     Json
+  status      DeviceCommandStatus @default(pending)
+  createdAt   DateTime            @default(now())
+  deliveredAt DateTime?
+  appliedAt   DateTime?
 
   deviceId String
   device   Device @relation(fields: [deviceId], references: [id])
-  alert    Alert?
 }
 
-model Alert {
-  id          String        @id @default(cuid())
-  title       String
-  description String
-  priority    AlertPriority
-  status      AlertStatus   @default(active)
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+model DevicePairingRequest {
+  id        String                     @id @default(cuid())
+  status    DevicePairingRequestStatus @default(pending)
+  expiresAt DateTime
+  decidedAt DateTime?
+  createdAt DateTime                   @default(now())
+  updatedAt DateTime                   @updatedAt
 
-  deviceEventId String?      @unique
-  deviceEvent   DeviceEvent? @relation(fields: [deviceEventId], references: [id])
-  recipients    AlertRecipient[]
-}
+  requesterId String
+  requester   User   @relation("PairingRequester", fields: [requesterId], references: [id])
 
-model NotificationToken {
-  id        String   @id @default(cuid())
-  fcmToken  String   @unique
-  platform  String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  deviceId String
+  device   Device @relation(fields: [deviceId], references: [id])
 
-  userId String
-  user   User   @relation(fields: [userId], references: [id])
-}
-
-model AlertRecipient {
-  id             String         @id @default(cuid())
-  deliveryStatus DeliveryStatus @default(pending)
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
-
-  alertId String
-  alert   Alert  @relation(fields: [alertId], references: [id])
-  userId  String
-  user    User   @relation(fields: [userId], references: [id])
-
-  @@unique([alertId, userId])
+  @@index([deviceId, status])
+  @@index([requesterId, status])
 }

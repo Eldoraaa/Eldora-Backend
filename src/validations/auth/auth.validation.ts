@@ -14,8 +14,3 @@ export const registerSchema = z.object({
 export const googleLoginSchema = z.object({
   idToken: z.string().min(1, "ID token is required"),
 });
-
-export const registerFcmSchema = z.object({
-  fcmToken: z.string().min(1, "FCM token is required"),
-  platform: z.enum(["ios", "android", "web"]),
-});

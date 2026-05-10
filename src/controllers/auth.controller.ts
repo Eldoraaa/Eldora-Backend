@@ -7,13 +7,7 @@ import {
   loginSchema,
   registerSchema,
   googleLoginSchema,
-  registerFcmSchema,
 } from "@/validations/auth/auth.validation";
-
-function maskToken(token: string): string {
-  if (token.length <= 10) return "***";
-  return `${token.slice(0, 6)}...${token.slice(-4)}`;
-}
 
 export async function login(req: Request, res: Response): Promise<void> {
   const body = loginSchema.parse(req.body);
@@ -230,29 +224,4 @@ export async function googleLogin(req: Request, res: Response): Promise<void> {
     sendError(res, "Google token is invalid or has expired", 401);
     return;
   }
-}
-
-export async function registerFcmToken(
-  req: Request,
-  res: Response,
-): Promise<void> {
-  const body = registerFcmSchema.parse(req.body);
-  const userId = req.user!.id;
-  console.log("[Auth/FCM] Registering FCM token", {
-    userId,
-    platform: body.platform,
-    fcmToken: maskToken(body.fcmToken),
-  });
-
-  await prisma.notificationToken.upsert({
-    where: { fcmToken: body.fcmToken },
-    update: { userId, platform: body.platform },
-    create: { fcmToken: body.fcmToken, platform: body.platform, userId },
-  });
-
-  console.log("[Auth/FCM] FCM token registered", {
-    userId,
-    platform: body.platform,
-  });
-  sendSuccess(res, null, "FCM token registered successfully");
 }

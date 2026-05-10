@@ -1,12 +1,16 @@
 import { z } from "zod";
 
-export const eventSchema = z.object({
-  eventType: z.enum([
-    "emergency",
-    "assistance_request",
-    "service_request",
-    "sensor_anomaly",
-    "device_status",
-  ]),
-  payload: z.record(z.string(), z.unknown()).default({}),
+export const heartbeatSchema = z.object({
+  batteryLevel: z.number().int().min(0).max(100).optional(),
+  isCharging: z.boolean().optional(),
+  wifiSsid: z.string().trim().min(1).max(32).optional(),
+  wifiRssi: z.number().int().min(-120).max(0).optional(),
+  localIp: z.string().trim().max(45).optional(),
+  localPairingToken: z.string().trim().min(8).max(80).optional(),
+  firmwareVersion: z.string().trim().min(1).max(32).optional(),
+}).default({});
+
+export const commandAckSchema = z.object({
+  status: z.enum(["applied", "failed"]),
+  message: z.string().trim().max(160).optional(),
 });

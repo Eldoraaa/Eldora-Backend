@@ -2,6 +2,13 @@ import { Request, Response } from "express";
 import { prisma } from "@/config/database";
 import { sendSuccess } from "@/utils/response.utils";
 
+const DEVICE_ONLINE_WINDOW_MS = 2 * 60 * 1000;
+
+function isRecentlySeen(lastSeen: Date | null): boolean {
+  if (!lastSeen) return false;
+  return Date.now() - lastSeen.getTime() <= DEVICE_ONLINE_WINDOW_MS;
+}
+
 export async function getSummary(req: Request, res: Response): Promise<void> {
   const userId = req.user!.id;
 
@@ -18,6 +25,11 @@ export async function getSummary(req: Request, res: Response): Promise<void> {
               name: true,
               isOnline: true,
               lastSeen: true,
+              batteryLevel: true,
+              isCharging: true,
+              wifiSsid: true,
+              wifiRssi: true,
+              firmwareVersion: true,
             },
           },
         },
@@ -25,32 +37,14 @@ export async function getSummary(req: Request, res: Response): Promise<void> {
     },
   });
 
-  const devices = user?.elderProfiles.flatMap((ep) => ep.devices) ?? [];
-
-  // Get recipient alert IDs for this user
-  const recipientAlerts = await prisma.alertRecipient.findMany({
-    where: { userId },
-    select: { alertId: true, deliveryStatus: true },
-    orderBy: { createdAt: "desc" },
-  });
-
-  const alertIds = recipientAlerts.map((r) => r.alertId);
-  const unreadCount = recipientAlerts.filter((r) => r.deliveryStatus === "pending").length;
-
-  const recentAlerts = await prisma.alert.findMany({
-    where: { id: { in: alertIds }, status: "active" },
-    orderBy: { createdAt: "desc" },
-    take: 10,
-    include: {
-      deviceEvent: {
-        select: { deviceId: true, eventType: true, timestamp: true },
-      },
-    },
-  });
+  const devices = (user?.elderProfiles.flatMap((ep) => ep.devices) ?? []).map(
+    (device) => ({
+      ...device,
+      isOnline: Boolean(device.isOnline && isRecentlySeen(device.lastSeen)),
+    })
+  );
 
   sendSuccess(res, {
     devices,
-    recentAlerts,
-    unreadAlertCount: unreadCount,
   });
 }

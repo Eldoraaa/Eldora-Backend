@@ -5,8 +5,8 @@ import { requestLogger } from "@/middlewares/logger.middleware";
 import { errorHandler } from "@/middlewares/error.middleware";
 import authRoutes from "@/routes/auth.routes";
 import homeRoutes from "@/routes/home.routes";
-import alertsRoutes from "@/routes/alerts.routes";
 import iotRoutes from "@/routes/iot.routes";
+import devicesRoutes from "@/routes/devices.routes";
 
 const app = express();
 
@@ -24,8 +24,8 @@ app.get("/health", (_req, res) => {
 // Routes
 app.use("/auth", authRoutes);
 app.use("/home", homeRoutes);
-app.use("/alerts", alertsRoutes);
 app.use("/iot", iotRoutes);
+app.use("/devices", devicesRoutes);
 
 // 404
 app.use((_req, res) => {
