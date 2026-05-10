@@ -1,6 +1,6 @@
-import { randomUUID } from "crypto";
 import { Request, Response } from "express";
 import { prisma } from "@/config/database";
+import { localPairingTokenMatches } from "@/services/iot.service";
 import { sendError, sendSuccess } from "@/utils/response.utils";
 import {
   localPairDeviceSchema,
@@ -10,6 +10,7 @@ import {
 
 const DEVICE_ONLINE_WINDOW_MS = 2 * 60 * 1000;
 const PAIRING_REQUEST_EXPIRY_MS = 15 * 60 * 1000;
+const LOCAL_PAIRING_TOKEN_TTL_MS = 10 * 60 * 1000;
 
 function isRecentlySeen(lastSeen: Date | null): boolean {
   if (!lastSeen) return false;
@@ -22,7 +23,6 @@ function buildDeviceResponse(device: any) {
   return {
     id: device.id,
     deviceId: device.deviceId,
-    deviceKey: device.deviceKey,
     name: device.name ?? "Eldora Hub",
     elderName: elderProfile?.name ?? "Elder profile",
     isOnline,
@@ -97,31 +97,17 @@ export async function pairDevice(req: Request, res: Response): Promise<void> {
   });
 
   if (!device) {
-    const deviceSerial = `ELD-${randomUUID().slice(0, 8).toUpperCase()}`;
-    device = await prisma.device.create({
-      data: {
-        deviceId: deviceSerial,
-        deviceKey,
-        name: body.deviceName ?? "Eldora Hub",
-        elderProfile: {
-          create: {
-            name: body.elderName ?? "Eldora User",
-            users: { connect: { id: userId } },
-          },
-        },
-      },
-      include: {
-        elderProfile: {
-          include: { users: { select: { id: true } } },
-        },
-      },
-    });
-
-    sendSuccess(res, buildDeviceResponse(device), "Device paired", 201);
+    sendError(res, "Device is not registered", 404);
     return;
   }
 
   const alreadyLinked = device.elderProfile.users.some((user) => user.id === userId);
+  const hasOwner = device.elderProfile.users.length > 0;
+
+  if (!alreadyLinked && hasOwner) {
+    sendError(res, "Device is already linked to another account", 409);
+    return;
+  }
 
   if (!alreadyLinked || body.elderName) {
     await prisma.elderProfile.update({
@@ -175,34 +161,20 @@ export async function pairLocalDevice(
   });
 
   if (!device) {
-    const deviceSerial = `ELD-${randomUUID().slice(0, 8).toUpperCase()}`;
-    device = await prisma.device.create({
-      data: {
-        deviceId: deviceSerial,
-        deviceKey,
-        name: body.deviceName ?? "Eldora Hub",
-        localIp: body.localIp,
-        localPairingToken: pairingToken,
-        localPairingTokenUpdatedAt: new Date(),
-        elderProfile: {
-          create: {
-            name: body.elderName ?? "Eldora User",
-            users: { connect: { id: userId } },
-          },
-        },
-      },
-      include: {
-        elderProfile: {
-          include: { users: { select: { id: true } } },
-        },
-      },
-    });
-
-    sendSuccess(res, buildDeviceResponse(device), "Local hub paired", 201);
+    sendError(res, "Device is not registered", 404);
     return;
   }
 
-  if (device.localPairingToken && device.localPairingToken !== pairingToken) {
+  if (
+    !device.localPairingToken ||
+    !device.localPairingTokenUpdatedAt ||
+    Date.now() - device.localPairingTokenUpdatedAt.getTime() > LOCAL_PAIRING_TOKEN_TTL_MS
+  ) {
+    sendError(res, "Local pairing token is expired", 403);
+    return;
+  }
+
+  if (!localPairingTokenMatches(device.localPairingToken, pairingToken)) {
     sendError(res, "Local pairing token is not valid", 403);
     return;
   }
@@ -214,8 +186,6 @@ export async function pairLocalDevice(
       where: { id: device.id },
       data: {
         ...(body.localIp && { localIp: body.localIp }),
-        localPairingToken: pairingToken,
-        localPairingTokenUpdatedAt: new Date(),
         ...(body.deviceName && { name: body.deviceName }),
       },
       include: {

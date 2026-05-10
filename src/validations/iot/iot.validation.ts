@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { productionPairingTokenSchema } from "@/validations/shared/pairing-token.validation";
 
 export const heartbeatSchema = z.object({
   batteryLevel: z.number().int().min(0).max(100).optional(),
@@ -6,7 +7,7 @@ export const heartbeatSchema = z.object({
   wifiSsid: z.string().trim().min(1).max(32).optional(),
   wifiRssi: z.number().int().min(-120).max(0).optional(),
   localIp: z.string().trim().max(45).optional(),
-  localPairingToken: z.string().trim().min(8).max(80).optional(),
+  localPairingToken: productionPairingTokenSchema.optional(),
   firmwareVersion: z.string().trim().min(1).max(32).optional(),
 }).default({});
 
