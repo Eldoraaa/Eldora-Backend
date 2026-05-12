@@ -7,7 +7,10 @@ export async function authenticateDevice(
   res: Response,
   next: NextFunction
 ): Promise<void> {
-  const deviceKey = req.headers["x-device-key"] as string | undefined;
+  const headerValue = req.headers["x-device-key"];
+  const deviceKey = Array.isArray(headerValue)
+    ? headerValue[0]?.trim()
+    : headerValue?.trim();
   if (!deviceKey) {
     sendError(res, "Device key tidak ditemukan", 401);
     return;
