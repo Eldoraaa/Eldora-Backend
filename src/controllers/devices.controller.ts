@@ -194,28 +194,7 @@ export async function pairLocalDevice(
   });
 
   if (!device) {
-    const now = new Date();
-    const createdDevice = await prisma.device.create({
-      data: {
-        deviceId: deviceKey,
-        deviceKey,
-        name: body.deviceName ?? "Eldora Hub",
-        ...buildLocalPairingDeviceData(body, now),
-        elderProfile: {
-          create: {
-            name: body.elderName ?? "Eldora User",
-            users: { connect: { id: userId } },
-          },
-        },
-      },
-      include: {
-        elderProfile: {
-          include: { users: { select: { id: true } } },
-        },
-      },
-    });
-
-    sendSuccess(res, buildDeviceResponse(createdDevice), "Device paired");
+    sendError(res, "Device has not checked in yet", 404);
     return;
   }
 
