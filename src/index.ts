@@ -1,4 +1,4 @@
-import express, { Request, Response } from "express";
+import express from "express";
 import helmet from "helmet";
 import cors from "cors";
 import swaggerUi from "swagger-ui-express";
@@ -18,6 +18,29 @@ app.use(express.json());
 app.use(requestLogger);
 
 // Health
+/**
+ * @swagger
+ * /health:
+ *   get:
+ *     summary: Check API health
+ *     tags:
+ *       - Health
+ *     responses:
+ *       200:
+ *         description: API is running
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: ok
+ *                 timestamp:
+ *                   type: string
+ *                   format: date-time
+ *                   example: 2026-05-25T13:00:00.000Z
+ */
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
