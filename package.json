@@ -2,14 +2,14 @@
   "name": "backend-eldora",
   "version": "1.0.0",
   "description": "",
-  "main": "dist/src/server.js",
+  "main": "dist/src/index.js",
   "scripts": {
-    "dev": "nodemon --watch src --ext ts --exec \"ts-node --files -r tsconfig-paths/register src/server.ts\"",
+    "dev": "nodemon --watch src --ext ts --exec \"ts-node --files -r tsconfig-paths/register src/index.ts\"",
     "prisma:generate": "prisma generate",
     "prebuild": "npm run prisma:generate",
     "build": "tsc",
     "postbuild": "tsc-alias",
-    "start": "node dist/src/server.js",
+    "start": "node dist/src/index.js",
     "seed": "ts-node --files -r tsconfig-paths/register prisma/seed.ts"
   },
   "keywords": [],
