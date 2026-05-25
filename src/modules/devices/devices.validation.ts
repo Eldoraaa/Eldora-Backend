@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { productionPairingTokenSchema } from "@/validations/shared/pairing-token.validation";
+import { productionPairingTokenSchema } from "@/shared/validations";
 
 export const pairDeviceSchema = z.object({
   deviceKey: z.string().trim().min(4, "Device code is required"),

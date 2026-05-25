@@ -1,9 +1,12 @@
 import { Request, Response, NextFunction } from "express";
 import { createHash, timingSafeEqual } from "crypto";
-import { prisma } from "@/config/database";
-import { config } from "@/config/env";
+import { config } from "@/config";
 import { sendError } from "@/utils/response.utils";
 import type { Device } from "../../generated/prisma/client";
+import {
+  createUnclaimedDevice as createUnclaimedDeviceRecord,
+  findDeviceByKeyForAuth,
+} from "@/modules/devices/devices.repository";
 
 function getHeaderValue(req: Request, header: string): string | null {
   const headerValue = req.headers[header];
@@ -47,24 +50,11 @@ function attachDevice(req: Request, device: Device): void {
   };
 }
 
-async function createUnclaimedDevice(deviceKey: string): Promise<Device> {
+async function registerUnclaimedDevice(deviceKey: string): Promise<Device> {
   try {
-    return await prisma.device.create({
-      data: {
-        deviceId: deviceKey,
-        deviceKey,
-        name: "Eldora Hub",
-        elderProfile: {
-          create: {
-            name: "Eldora User",
-          },
-        },
-      },
-    });
+    return await createUnclaimedDeviceRecord(deviceKey);
   } catch (error) {
-    const existingDevice = await prisma.device.findUnique({
-      where: { deviceKey },
-    });
+    const existingDevice = await findDeviceByKeyForAuth(deviceKey);
 
     if (existingDevice) return existingDevice;
     throw error;
@@ -87,7 +77,7 @@ export async function authenticateDevice(
     return;
   }
 
-  const device = await prisma.device.findUnique({ where: { deviceKey } });
+  const device = await findDeviceByKeyForAuth(deviceKey);
   if (!device) {
     sendError(res, "Device key tidak valid", 401);
     return;
@@ -108,7 +98,7 @@ export async function authenticateOrRegisterDevice(
     return;
   }
 
-  const device = await prisma.device.findUnique({ where: { deviceKey } });
+  const device = await findDeviceByKeyForAuth(deviceKey);
   if (!device && !hasValidProvisioningSecret(req)) {
     sendError(res, "Device key tidak valid", 401);
     return;
@@ -119,6 +109,6 @@ export async function authenticateOrRegisterDevice(
     return;
   }
 
-  attachDevice(req, device ?? (await createUnclaimedDevice(deviceKey)));
+  attachDevice(req, device ?? (await registerUnclaimedDevice(deviceKey)));
   next();
 }

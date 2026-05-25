@@ -1,6 +1,4 @@
-import { config } from "@/config/env";
-import { initFirebase } from "@/config/firebase";
-import { prisma } from "@/config/database";
+import { config, initFirebase, prisma } from "@/config";
 import app from "./app";
 
 async function bootstrap(): Promise<void> {

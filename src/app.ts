@@ -1,12 +1,11 @@
 import express from "express";
 import helmet from "helmet";
 import cors from "cors";
-import { requestLogger } from "@/middlewares/logger.middleware";
-import { errorHandler } from "@/middlewares/error.middleware";
-import authRoutes from "@/routes/auth.routes";
-import homeRoutes from "@/routes/home.routes";
-import iotRoutes from "@/routes/iot.routes";
-import devicesRoutes from "@/routes/devices.routes";
+import { errorHandler, requestLogger } from "@/middlewares";
+import authRoutes from "@/modules/auth";
+import homeRoutes from "@/modules/home";
+import iotRoutes from "@/modules/iot";
+import devicesRoutes from "@/modules/devices";
 
 const app = express();
 

@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { ZodError } from "zod";
+import { AppError } from "@/shared/errors";
 
 export function errorHandler(
   err: unknown,
@@ -13,6 +14,11 @@ export function errorHandler(
       message: e.message,
     }));
     res.status(422).json({ success: false, message: "Validasi gagal", errors: fields });
+    return;
+  }
+
+  if (err instanceof AppError) {
+    res.status(err.statusCode).json({ success: false, message: err.message });
     return;
   }
 

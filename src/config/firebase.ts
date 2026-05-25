@@ -1,6 +1,6 @@
 import * as fs from "fs";
 import * as admin from "firebase-admin";
-import { config } from "./env";
+import { config } from "@/config/env";
 
 let initialized = false;
 
