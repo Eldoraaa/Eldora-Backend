@@ -6,6 +6,7 @@ import authRoutes from "@/modules/auth";
 import homeRoutes from "@/modules/home";
 import iotRoutes from "@/modules/iot";
 import devicesRoutes from "@/modules/devices";
+import docsRoutes from "@/modules/docs";
 
 const app = express();
 
@@ -21,6 +22,7 @@ app.get("/health", (_req, res) => {
 });
 
 // Routes
+app.use(docsRoutes);
 app.use("/auth", authRoutes);
 app.use("/home", homeRoutes);
 app.use("/iot", iotRoutes);
