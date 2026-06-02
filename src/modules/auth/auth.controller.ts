@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { sendSuccess } from "@/utils/response.utils";
 import { googleLoginSchema, loginSchema, registerSchema } from "./auth.validation";
 import {
+  deleteCurrentUserAccount,
   loginWithFirebasePassword,
   loginWithGoogle,
   registerWithFirebase,
@@ -23,4 +24,9 @@ export async function googleLogin(req: Request, res: Response): Promise<void> {
   const body = googleLoginSchema.parse(req.body);
   const result = await loginWithGoogle(body.idToken);
   sendSuccess(res, result, "Login successful");
+}
+
+export async function deleteAccount(req: Request, res: Response): Promise<void> {
+  await deleteCurrentUserAccount(req.user!.id);
+  sendSuccess(res, null, "Account deleted");
 }

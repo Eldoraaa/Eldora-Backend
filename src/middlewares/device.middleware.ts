@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import { createHash, timingSafeEqual } from "crypto";
 import { config } from "@/config";
 import { sendError } from "@/utils/response.utils";
-import type { Device } from "../../generated/prisma/client";
+import type { MsDevice } from "../../generated/prisma/client";
 import {
   createUnclaimedDevice as createUnclaimedDeviceRecord,
   findDeviceByKeyForAuth,
@@ -42,7 +42,7 @@ function hasRequiredProvisioningSecret(req: Request): boolean {
   return !config.iotDeviceProvisioningSecret || hasValidProvisioningSecret(req);
 }
 
-function attachDevice(req: Request, device: Device): void {
+function attachDevice(req: Request, device: MsDevice): void {
   req.device = {
     id: device.id,
     deviceId: device.deviceId,
@@ -50,7 +50,7 @@ function attachDevice(req: Request, device: Device): void {
   };
 }
 
-async function registerUnclaimedDevice(deviceKey: string): Promise<Device> {
+async function registerUnclaimedDevice(deviceKey: string): Promise<MsDevice> {
   try {
     return await createUnclaimedDeviceRecord(deviceKey);
   } catch (error) {

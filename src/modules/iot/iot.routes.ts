@@ -6,6 +6,8 @@ import {
 import {
   acknowledgeCommand,
   getCommands,
+  postDeviceOfflineEvent,
+  postFallEvent,
   postHeartbeat,
 } from "./iot.controller";
 
@@ -51,6 +53,9 @@ const router = Router();
  *         $ref: '#/components/responses/Unauthorized'
  */
 router.post("/heartbeat", authenticateOrRegisterDevice, postHeartbeat);
+
+router.post("/events/fall", authenticateDevice, postFallEvent);
+router.post("/events/offline", authenticateDevice, postDeviceOfflineEvent);
 
 /**
  * @swagger

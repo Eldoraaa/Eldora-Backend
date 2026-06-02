@@ -8,7 +8,14 @@ import {
   pairLocalDevice,
   queueWifiConfig,
   rejectPairingRequest,
+  updateDeviceManagement,
 } from "./devices.controller";
+import {
+  createRoomCategory,
+  deleteRoomCategory,
+  listRoomCategories,
+  updateRoomCategories,
+} from "./rooms.controller";
 
 const router = Router();
 
@@ -27,6 +34,12 @@ const router = Router();
  *         $ref: '#/components/responses/Unauthorized'
  */
 router.get("/", authenticate, getDevices);
+
+router.get("/room-categories", authenticate, listRoomCategories);
+router.post("/room-categories", authenticate, createRoomCategory);
+router.patch("/room-categories", authenticate, updateRoomCategories);
+router.delete("/room-categories/:id", authenticate, deleteRoomCategory);
+router.patch("/management", authenticate, updateDeviceManagement);
 
 /**
  * @swagger

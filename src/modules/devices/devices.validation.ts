@@ -24,3 +24,16 @@ export const wifiCommandSchema = z.object({
   ssid: z.string().trim().min(1, "WiFi name is required").max(32),
   password: z.string().max(63).optional().default(""),
 });
+
+export const deviceManagementSchema = z.object({
+  devices: z
+    .array(
+      z.object({
+        id: z.string().trim().min(1),
+        sortOrder: z.number().int().min(0).optional(),
+        isHidden: z.boolean().optional(),
+        roomCategoryId: z.string().trim().min(1).nullable().optional(),
+      })
+    )
+    .min(1),
+});

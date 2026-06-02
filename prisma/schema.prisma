@@ -7,7 +7,7 @@ datasource db {
   provider = "postgresql"
 }
 
-// ─── Enums ────────────────────────────────────────────────────────────────────
+// Enums
 
 enum UserRole {
   family
@@ -33,9 +33,36 @@ enum DevicePairingRequestStatus {
   expired
 }
 
-// ─── Models ───────────────────────────────────────────────────────────────────
+enum HomeMemberRole {
+  home_owner
+  administrator
+  common_member
+}
 
-model User {
+enum HomeInvitationStatus {
+  pending
+  accepted
+  revoked
+  expired
+}
+
+enum SceneTriggerType {
+  tap_to_run
+  device_status_changes
+  schedule
+  weather_changes
+  family_member_going_home
+}
+
+enum NotificationType {
+  alarm
+  home
+  device
+}
+
+// Models
+
+model MsUser {
   id        String   @id @default(cuid())
   email     String   @unique
   googleId  String?  @unique
@@ -45,21 +72,126 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  elderProfiles   ElderProfile[]
-  pairingRequests DevicePairingRequest[] @relation("PairingRequester")
+  elderProfileLinks TrElderProfileUser[]
+  pairingRequests TrDevicePairingRequest[] @relation("PairingRequester")
+  homeMemberships TrHomeMember[]
+  homeInvitations TrHomeInvitation[] @relation("HomeInvitationCreator")
+  notificationPreference MsNotificationPreference?
+  notifications TrNotification[]
+  createdScenes MsScene[] @relation("SceneCreator")
+
+  @@map("MsUser")
 }
 
-model ElderProfile {
+model MsNotificationPreference {
+  id                          String   @id @default(cuid())
+  deviceAlertEnabled          Boolean  @default(true)
+  dndEnabled                  Boolean  @default(false)
+  dndStartTime                String?
+  dndEndTime                  String?
+  systemNotificationEnabled   Boolean  @default(true)
+  homeAlertEnabled            Boolean  @default(true)
+  fallAlertEnabled            Boolean  @default(true)
+  sosAlertEnabled             Boolean  @default(true)
+  deviceOfflineAlertEnabled   Boolean  @default(true)
+  lowBatteryAlertEnabled      Boolean  @default(true)
+  pairingRequestAlertEnabled  Boolean  @default(true)
+  bulletinEnabled             Boolean  @default(true)
+  fcmToken                    String?
+  fcmPlatform                 String?
+  createdAt                   DateTime @default(now())
+  updatedAt                   DateTime @updatedAt
+
+  userId String @unique
+  user   MsUser   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("MsNotificationPreference")
+}
+
+model MsHome {
+  id            String   @id @default(cuid())
+  name          String
+  locationLabel String?
+  address       String?
+  latitude      Float?
+  longitude     Float?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  members     TrHomeMember[]
+  rooms       MsRoomCategory[]
+  invitations TrHomeInvitation[]
+  scenes      MsScene[]
+  notifications TrNotification[]
+
+  @@map("MsHome")
+}
+
+model TrHomeMember {
+  id        String         @id @default(cuid())
+  role      HomeMemberRole @default(common_member)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  homeId String
+  home   MsHome   @relation(fields: [homeId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   MsUser   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([homeId, userId])
+  @@index([userId])
+  @@map("TrHomeMember")
+}
+
+model TrHomeInvitation {
+  id         String               @id @default(cuid())
+  email      String?
+  role       HomeMemberRole       @default(common_member)
+  status     HomeInvitationStatus @default(pending)
+  inviteCode String               @unique
+  expiresAt  DateTime
+  createdAt  DateTime             @default(now())
+  updatedAt  DateTime             @updatedAt
+
+  homeId String
+  home   MsHome   @relation(fields: [homeId], references: [id], onDelete: Cascade)
+
+  createdById String
+  createdBy   MsUser   @relation("HomeInvitationCreator", fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([homeId, status])
+  @@index([email])
+  @@map("TrHomeInvitation")
+}
+
+model MsElderProfile {
   id        String   @id @default(cuid())
   name      String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users   User[]
-  devices Device[]
+  userLinks TrElderProfileUser[]
+  devices MsDevice[]
+
+  @@map("MsElderProfile")
 }
 
-model Device {
+model TrElderProfileUser {
+  elderProfileId String
+  elderProfile   MsElderProfile @relation(fields: [elderProfileId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   MsUser   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@id([elderProfileId, userId])
+  @@index([userId])
+  @@map("TrElderProfileUser")
+}
+
+model MsDevice {
   id                         String    @id @default(cuid())
   deviceId                   String    @unique
   deviceKey                  String    @unique
@@ -71,6 +203,8 @@ model Device {
   wifiSsid                   String?
   wifiRssi                   Int?
   localIp                    String?
+  sortOrder                  Int       @default(0)
+  isHidden                   Boolean   @default(false)
   localPairingToken          String?
   localPairingTokenUpdatedAt DateTime?
   firmwareVersion            String?
@@ -78,12 +212,19 @@ model Device {
   updatedAt                  DateTime  @updatedAt
 
   elderProfileId  String
-  elderProfile    ElderProfile           @relation(fields: [elderProfileId], references: [id])
-  commands        DeviceCommand[]
-  pairingRequests DevicePairingRequest[]
+  elderProfile    MsElderProfile           @relation(fields: [elderProfileId], references: [id])
+  roomCategoryId  String?
+  roomCategory    MsRoomCategory?          @relation(fields: [roomCategoryId], references: [id])
+  commands        TrDeviceCommand[]
+  pairingRequests TrDevicePairingRequest[]
+  notifications   TrNotification[]
+
+  @@index([sortOrder])
+  @@index([roomCategoryId])
+  @@map("MsDevice")
 }
 
-model DeviceCommand {
+model TrDeviceCommand {
   id          String              @id @default(cuid())
   commandType DeviceCommandType
   payload     Json
@@ -93,10 +234,12 @@ model DeviceCommand {
   appliedAt   DateTime?
 
   deviceId String
-  device   Device @relation(fields: [deviceId], references: [id])
+  device   MsDevice @relation(fields: [deviceId], references: [id])
+
+  @@map("TrDeviceCommand")
 }
 
-model DevicePairingRequest {
+model TrDevicePairingRequest {
   id        String                     @id @default(cuid())
   status    DevicePairingRequestStatus @default(pending)
   expiresAt DateTime
@@ -105,11 +248,82 @@ model DevicePairingRequest {
   updatedAt DateTime                   @updatedAt
 
   requesterId String
-  requester   User   @relation("PairingRequester", fields: [requesterId], references: [id])
+  requester   MsUser   @relation("PairingRequester", fields: [requesterId], references: [id])
 
   deviceId String
-  device   Device @relation(fields: [deviceId], references: [id])
+  device   MsDevice @relation(fields: [deviceId], references: [id])
 
   @@index([deviceId, status])
   @@index([requesterId, status])
+  @@map("TrDevicePairingRequest")
+}
+
+model MsRoomCategory {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String
+  sortOrder Int      @default(0)
+  isDefault Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  homeId String?
+  home   MsHome?    @relation(fields: [homeId], references: [id], onDelete: Cascade)
+  devices MsDevice[]
+  scenes  MsScene[]
+
+  @@index([sortOrder])
+  @@index([homeId])
+  @@unique([homeId, slug])
+  @@map("MsRoomCategory")
+}
+
+model MsScene {
+  id            String           @id @default(cuid())
+  name          String
+  triggerType   SceneTriggerType
+  triggerConfig Json?
+  actions       Json?
+  isEnabled     Boolean          @default(true)
+  sortOrder     Int              @default(0)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  homeId String
+  home   MsHome   @relation(fields: [homeId], references: [id], onDelete: Cascade)
+
+  roomCategoryId String?
+  roomCategory   MsRoomCategory? @relation(fields: [roomCategoryId], references: [id], onDelete: SetNull)
+
+  createdById String?
+  createdBy   MsUser?   @relation("SceneCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([homeId, triggerType, sortOrder])
+  @@index([roomCategoryId])
+  @@map("MsScene")
+}
+
+model TrNotification {
+  id        String           @id @default(cuid())
+  type      NotificationType
+  title     String
+  body      String?
+  metadata  Json?
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  userId String
+  user   MsUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  homeId String?
+  home   MsHome? @relation(fields: [homeId], references: [id], onDelete: Cascade)
+
+  deviceId String?
+  device   MsDevice? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  @@index([userId, type, createdAt])
+  @@index([homeId])
+  @@index([deviceId])
+  @@map("TrNotification")
 }

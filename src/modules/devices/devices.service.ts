@@ -15,13 +15,18 @@ import {
   findPendingPairingRequest,
   findPendingPairingRequestsForOwner,
   findUserDevice,
+  linkElderProfileUser,
   refreshPairingRequest,
   rejectPairingRequest as rejectPairingRequestInRepository,
   updateDevice,
+  updateDeviceManagementState,
   updateElderProfile,
   type DeviceWithProfile,
   type PairingRequestWithDevice,
 } from "./devices.repository";
+import { findFirstUserHome } from "@/modules/home/home.repository";
+import { findRoomCategories } from "./rooms.repository";
+import { createUserNotification } from "@/modules/notifications/notifications.service";
 
 const DEVICE_ONLINE_WINDOW_MS = 2 * 60 * 1000;
 const PAIRING_REQUEST_EXPIRY_MS = 15 * 60 * 1000;
@@ -52,7 +57,7 @@ function buildDeviceResponse(device: DeviceWithProfile) {
   return {
     id: device.id,
     deviceId: device.deviceId,
-    name: device.name ?? "Eldora Hub",
+    name: device.name ?? "Eldora Core",
     elderName: elderProfile?.name ?? "Elder profile",
     isOnline,
     lastSeen: device.lastSeen,
@@ -62,7 +67,16 @@ function buildDeviceResponse(device: DeviceWithProfile) {
     wifiRssi: device.wifiRssi,
     localIp: device.localIp,
     firmwareVersion: device.firmwareVersion,
-    caregiverCount: elderProfile?.users?.length ?? 0,
+    sortOrder: device.sortOrder,
+    isHidden: device.isHidden,
+    roomCategory: device.roomCategory
+      ? {
+          id: device.roomCategory.id,
+          name: device.roomCategory.name,
+          slug: device.roomCategory.slug,
+        }
+      : null,
+    caregiverCount: elderProfile?.userLinks?.length ?? 0,
   };
 }
 
@@ -115,18 +129,23 @@ export async function pairDevice(
     throw new AppError("Device is not registered", 404);
   }
 
-  const alreadyLinked = device.elderProfile.users.some((user) => user.id === userId);
-  const hasOwner = device.elderProfile.users.length > 0;
+  const alreadyLinked = device.elderProfile.userLinks.some(
+    (link) => link.userId === userId
+  );
+  const hasOwner = device.elderProfile.userLinks.length > 0;
 
   if (!alreadyLinked && hasOwner) {
     throw new AppError("Device is already linked to another account", 409);
   }
 
-  if (!alreadyLinked || body.elderName) {
+  if (body.elderName) {
     await updateElderProfile(device.elderProfileId, {
       ...(body.elderName && { name: body.elderName }),
-      ...(!alreadyLinked && { users: { connect: { id: userId } } }),
     });
+  }
+
+  if (!alreadyLinked) {
+    await linkElderProfileUser(device.elderProfileId, userId);
   }
 
   const updatedDevice = body.deviceName
@@ -148,8 +167,10 @@ export async function pairLocalDevice(userId: string, body: LocalPairDeviceInput
     throw new AppError("Device has not checked in yet", 404);
   }
 
-  const alreadyLinked = device.elderProfile.users.some((user) => user.id === userId);
-  const hasOwner = device.elderProfile.users.length > 0;
+  const alreadyLinked = device.elderProfile.userLinks.some(
+    (link) => link.userId === userId
+  );
+  const hasOwner = device.elderProfile.userLinks.length > 0;
   const hasFreshToken = Boolean(
     device.localPairingToken &&
       device.localPairingTokenUpdatedAt &&
@@ -172,13 +193,11 @@ export async function pairLocalDevice(userId: string, body: LocalPairDeviceInput
     const now = new Date();
     const updatedDevice = await updateDevice(device.id, {
       ...buildLocalPairingDeviceData(body, now),
-      elderProfile: {
-        update: {
-          ...(body.elderName && { name: body.elderName }),
-          users: { connect: { id: userId } },
-        },
-      },
+      ...(body.elderName && {
+        elderProfile: { update: { name: body.elderName } },
+      }),
     });
+    await linkElderProfileUser(device.elderProfileId, userId);
 
     return {
       data: buildDeviceResponse(updatedDevice),
@@ -205,6 +224,7 @@ export async function pairLocalDevice(userId: string, body: LocalPairDeviceInput
 
   const expiresAt = new Date(Date.now() + PAIRING_REQUEST_EXPIRY_MS);
   let request = await findPendingPairingRequest(device.id, userId);
+  let shouldNotifyOwners = false;
 
   if (!request) {
     request = await createPairingRequest({
@@ -212,8 +232,34 @@ export async function pairLocalDevice(userId: string, body: LocalPairDeviceInput
       requesterId: userId,
       expiresAt,
     });
+    shouldNotifyOwners = true;
   } else if (request.expiresAt < new Date()) {
     request = await refreshPairingRequest(request.id, expiresAt);
+    shouldNotifyOwners = true;
+  }
+
+  if (shouldNotifyOwners) {
+    const ownerIds = request.device.elderProfile.userLinks
+      .map((link) => link.userId)
+      .filter((ownerId) => ownerId !== userId);
+
+    await Promise.all(
+      ownerIds.map(async (ownerId) => {
+        const ownerHome = await findFirstUserHome(ownerId);
+        await createUserNotification({
+          userId: ownerId,
+          type: "home",
+          title: "New pairing request",
+          body: `${request.requester.name} wants to connect ${request.device.name ?? "a device"}.`,
+          homeId: ownerHome?.id ?? null,
+          deviceId: request.device.id,
+          metadata: {
+            pairingRequestId: request.id,
+            requesterId: request.requesterId,
+          },
+        });
+      })
+    );
   }
 
   return {
@@ -280,4 +326,44 @@ export async function queueWifiConfig(
     deviceId: device.deviceId,
     ssid: body.ssid,
   };
+}
+
+export async function updateDeviceManagement(
+  userId: string,
+  body: {
+    devices: Array<{
+      id: string;
+      sortOrder?: number;
+      isHidden?: boolean;
+      roomCategoryId?: string | null;
+    }>;
+  }
+) {
+  const ownedDevices = await findDevicesByUser(userId);
+  const ownedDeviceIds = new Set(ownedDevices.map((device) => device.id));
+  const roomIdsToAssign = body.devices
+    .map((device) => device.roomCategoryId)
+    .filter((roomId): roomId is string => Boolean(roomId));
+
+  if (roomIdsToAssign.length > 0) {
+    const home = await findFirstUserHome(userId);
+    if (!home) throw new AppError("Home not found", 404);
+    const rooms = await findRoomCategories(home.id);
+    const ownedRoomIds = new Set(rooms.map((room) => room.id));
+
+    for (const roomId of roomIdsToAssign) {
+      if (!ownedRoomIds.has(roomId)) {
+        throw new AppError("Room not found", 404);
+      }
+    }
+  }
+
+  for (const device of body.devices) {
+    if (!ownedDeviceIds.has(device.id)) {
+      throw new AppError("Device not found", 404);
+    }
+  }
+
+  const updatedDevices = await updateDeviceManagementState(body.devices);
+  return updatedDevices.map(buildDeviceResponse);
 }

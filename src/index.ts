@@ -8,6 +8,8 @@ import authRoutes from "@/modules/auth";
 import homeRoutes from "@/modules/home";
 import iotRoutes from "@/modules/iot";
 import devicesRoutes from "@/modules/devices";
+import notificationRoutes from "@/modules/notifications";
+import sceneRoutes from "@/modules/scenes";
 
 const app = express();
 
@@ -53,6 +55,8 @@ app.use("/auth", authRoutes);
 app.use("/home", homeRoutes);
 app.use("/iot", iotRoutes);
 app.use("/devices", devicesRoutes);
+app.use("/notifications", notificationRoutes);
+app.use("/scenes", sceneRoutes);
 
 // 404
 app.use((_req, res) => {

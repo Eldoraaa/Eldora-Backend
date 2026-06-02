@@ -1,5 +1,6 @@
 import { Router } from "express";
-import { googleLogin, login, register } from "./auth.controller";
+import { authenticate } from "@/middlewares";
+import { deleteAccount, googleLogin, login, register } from "./auth.controller";
 
 const router = Router();
 
@@ -87,5 +88,21 @@ router.post("/register", register);
  *         $ref: '#/components/responses/ValidationError'
  */
 router.post("/google", googleLogin);
+
+/**
+ * @swagger
+ * /auth/me:
+ *   delete:
+ *     tags: [Auth]
+ *     summary: Delete the current authenticated account
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Account deleted
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ */
+router.delete("/me", authenticate, deleteAccount);
 
 export default router;

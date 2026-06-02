@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { sendSuccess } from "@/utils/response.utils";
 import {
+  deviceManagementSchema,
   localPairDeviceSchema,
   pairDeviceSchema,
   wifiCommandSchema,
@@ -13,6 +14,7 @@ import {
   pairLocalDevice as pairLocalDeviceService,
   queueWifiConfig as queueWifiConfigService,
   rejectPairingRequest as rejectPairingRequestService,
+  updateDeviceManagement as updateDeviceManagementService,
 } from "./devices.service";
 
 export async function getDevices(req: Request, res: Response): Promise<void> {
@@ -63,4 +65,13 @@ export async function queueWifiConfig(req: Request, res: Response): Promise<void
   const deviceId = req.params.id as string;
   const result = await queueWifiConfigService(req.user!.id, deviceId, body);
   sendSuccess(res, result, "WiFi setup queued");
+}
+
+export async function updateDeviceManagement(
+  req: Request,
+  res: Response
+): Promise<void> {
+  const body = deviceManagementSchema.parse(req.body);
+  const devices = await updateDeviceManagementService(req.user!.id, body);
+  sendSuccess(res, devices, "Device management updated");
 }

@@ -1,9 +1,16 @@
 import { Request, Response } from "express";
 import { sendSuccess } from "@/utils/response.utils";
-import { commandAckSchema, heartbeatSchema } from "./iot.validation";
+import {
+  commandAckSchema,
+  deviceOfflineEventSchema,
+  fallEventSchema,
+  heartbeatSchema,
+} from "./iot.validation";
 import {
   acknowledgeCommand as acknowledgeCommandService,
   getPendingCommands,
+  reportDeviceOfflineEvent,
+  reportFallEvent,
   updateDeviceHeartbeat,
 } from "./iot.service";
 
@@ -26,4 +33,19 @@ export async function acknowledgeCommand(
   const commandId = req.params.id as string;
   await acknowledgeCommandService(req.device!.id, commandId, body);
   sendSuccess(res, null, "Command acknowledged");
+}
+
+export async function postFallEvent(req: Request, res: Response): Promise<void> {
+  const body = fallEventSchema.parse(req.body ?? {});
+  await reportFallEvent(req.device!.id, body);
+  sendSuccess(res, null, "Fall alert created");
+}
+
+export async function postDeviceOfflineEvent(
+  req: Request,
+  res: Response
+): Promise<void> {
+  const body = deviceOfflineEventSchema.parse(req.body ?? {});
+  await reportDeviceOfflineEvent(req.device!.id, body);
+  sendSuccess(res, null, "Device offline alert created");
 }

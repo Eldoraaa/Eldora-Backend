@@ -2,9 +2,12 @@ import { getAuth } from "@/config/firebase";
 import { UserRole } from "../../../generated/prisma/client";
 import { signToken } from "@/utils/jwt.utils";
 import { AppError } from "@/shared/errors";
+import { ensureDefaultHomeForUser } from "@/modules/home/home.service";
 import {
   createUser,
+  deleteUserAccount,
   findUserByEmail,
+  findUserById,
   findUserByFirebaseUidOrEmail,
   linkGoogleAccount,
 } from "./auth.repository";
@@ -16,6 +19,7 @@ type AuthResult = {
     email: string;
     name: string;
     role: UserRole;
+    avatarUrl?: string | null;
   };
 };
 
@@ -32,6 +36,7 @@ function buildAuthResult(user: {
   email: string;
   name: string;
   role: UserRole;
+  avatarUrl?: string | null;
 }): AuthResult {
   return {
     token: signToken({
@@ -45,6 +50,7 @@ function buildAuthResult(user: {
       email: user.email,
       name: user.name,
       role: user.role,
+      avatarUrl: user.avatarUrl ?? null,
     },
   };
 }
@@ -62,6 +68,8 @@ export async function loginWithFirebasePassword(idToken: string): Promise<AuthRe
   if (!user) {
     throw new AppError("Invalid email or password", 401);
   }
+
+  await ensureDefaultHomeForUser(user.id);
 
   return buildAuthResult(user);
 }
@@ -88,11 +96,13 @@ export async function registerWithFirebase(data: {
     throw new AppError("An account with this email already exists.", 409);
   }
 
-  await createUser({
+  const user = await createUser({
     name: data.name,
     email: data.email,
     googleId: firebaseUid,
   });
+
+  await ensureDefaultHomeForUser(user.id);
 }
 
 export async function loginWithGoogle(idToken: string): Promise<AuthResult> {
@@ -128,9 +138,37 @@ export async function loginWithGoogle(idToken: string): Promise<AuthResult> {
       });
     }
 
+    await ensureDefaultHomeForUser(user.id);
+
     return buildAuthResult(user);
   } catch (error) {
     if (error instanceof AppError) throw error;
+    const authError = error as { code?: unknown; message?: unknown };
+    console.warn("[Auth] Firebase Google token verification failed:", {
+      code: authError.code,
+      message: authError.message,
+    });
     throw new AppError("Google token is invalid or has expired", 401);
   }
+}
+
+export async function deleteCurrentUserAccount(userId: string): Promise<void> {
+  const user = await findUserById(userId);
+  if (!user) {
+    throw new AppError("Account not found", 404);
+  }
+
+  const firebaseAuth = getAuth();
+  if (firebaseAuth && user.googleId) {
+    try {
+      await firebaseAuth.deleteUser(user.googleId);
+    } catch (error) {
+      const authError = error as { code?: unknown };
+      if (authError.code !== "auth/user-not-found") {
+        throw new AppError("Failed to delete Firebase account", 502);
+      }
+    }
+  }
+
+  await deleteUserAccount(userId);
 }
