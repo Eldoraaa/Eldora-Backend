@@ -87,33 +87,6 @@ export function initFirebase(): void {
     return;
   }
 
-  const path = config.firebaseServiceAccountPath;
-  if (!fs.existsSync(path)) {
-    console.warn("[Firebase] Service account file not found — FCM disabled:", path);
-    return;
-  }
-  try {
-    const serviceAccount = JSON.parse(fs.readFileSync(path, "utf-8"));
-    if (!isServiceAccount(serviceAccount)) {
-      console.warn(
-        "[Firebase] Invalid service account JSON - expected Admin SDK key with project_id, client_email, and private_key. google-services.json will not work:",
-        path
-      );
-      return;
-    }
-
-    admin.initializeApp({
-      credential: admin.credential.cert({
-        projectId: serviceAccount.project_id,
-        clientEmail: serviceAccount.client_email,
-        privateKey: serviceAccount.private_key,
-      }),
-    });
-    initialized = true;
-    console.log("[Firebase] Admin SDK initialized");
-  } catch (err) {
-    console.warn("[Firebase] Failed to initialize — FCM disabled:", err);
-  }
 }
 
 export function getMessaging(): admin.messaging.Messaging | null {

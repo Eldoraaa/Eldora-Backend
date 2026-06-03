@@ -3,13 +3,17 @@ import { sendSuccess } from "@/utils/response.utils";
 import {
   getNotificationPreference,
   listUserNotifications,
+  getUserNotification,
   readAllUserNotifications,
   readUserNotification,
+  respondToUserNotification,
+  resolveUserNotification,
   saveNotificationPreference,
 } from "./notifications.service";
 import {
   listNotificationsSchema,
   notificationPreferenceSchema,
+  respondNotificationSchema,
 } from "./notifications.validation";
 
 export async function getNotificationPreferenceController(
@@ -38,12 +42,37 @@ export async function listNotificationsController(
   sendSuccess(res, notifications);
 }
 
+export async function getNotificationController(
+  req: Request,
+  res: Response
+): Promise<void> {
+  const notification = await getUserNotification(req.user!.id, req.params.id as string);
+  sendSuccess(res, notification);
+}
+
 export async function readNotificationController(
   req: Request,
   res: Response
 ): Promise<void> {
   await readUserNotification(req.user!.id, req.params.id as string);
   sendSuccess(res, null, "Notification marked as read");
+}
+
+export async function respondNotificationController(
+  req: Request,
+  res: Response
+): Promise<void> {
+  const body = respondNotificationSchema.parse(req.body);
+  await respondToUserNotification(req.user!.id, req.params.id as string, body);
+  sendSuccess(res, null, "Notification response saved");
+}
+
+export async function resolveNotificationController(
+  req: Request,
+  res: Response
+): Promise<void> {
+  await resolveUserNotification(req.user!.id, req.params.id as string);
+  sendSuccess(res, null, "Notification resolved");
 }
 
 export async function readAllNotificationsController(

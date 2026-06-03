@@ -28,6 +28,11 @@ export type NotificationPreferenceInput = z.infer<
   typeof notificationPreferenceSchema
 >;
 
+export const respondNotificationSchema = z.object({
+  status: z.enum(["acknowledged", "calling", "en_route", "resolved"]),
+  note: z.string().trim().max(240).optional(),
+});
+
 export const listNotificationsSchema = z.object({
   type: notificationTypeSchema.optional(),
   limit: z.coerce.number().int().min(1).max(100).optional(),

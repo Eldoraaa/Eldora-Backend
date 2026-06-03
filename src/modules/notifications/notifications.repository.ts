@@ -19,6 +19,37 @@ const defaultPreference = {
   bulletinEnabled: true,
 };
 
+export function upsertNotificationDeviceToken(input: {
+  userId: string;
+  token: string;
+  platform?: string | null;
+  deviceId?: string | null;
+}) {
+  return prisma.msNotificationDeviceToken.upsert({
+    where: { token: input.token },
+    create: {
+      userId: input.userId,
+      token: input.token,
+      platform: input.platform ?? null,
+      deviceId: input.deviceId ?? null,
+    },
+    update: {
+      userId: input.userId,
+      platform: input.platform ?? null,
+      deviceId: input.deviceId ?? null,
+      lastSeen: new Date(),
+    },
+  });
+}
+
+export function deleteNotificationDeviceToken(token: string) {
+  return prisma.msNotificationDeviceToken.deleteMany({ where: { token } });
+}
+
+export function findNotificationDeviceTokens(userId: string) {
+  return prisma.msNotificationDeviceToken.findMany({ where: { userId } });
+}
+
 export function findOrCreateNotificationPreference(userId: string) {
   return prisma.msNotificationPreference.upsert({
     where: { userId },
@@ -45,6 +76,34 @@ export function updateNotificationPreference(
   });
 }
 
+export function findRecentDeviceEventNotification(
+  userId: string,
+  deviceId: string,
+  eventType: string,
+  since: Date
+) {
+  return prisma.trNotification.findFirst({
+    where: {
+      userId,
+      deviceId,
+      createdAt: { gte: since },
+    },
+    orderBy: { createdAt: "desc" },
+  }).then((notification) => {
+    if (!notification?.metadata || typeof notification.metadata !== "object" || Array.isArray(notification.metadata)) return null;
+    return (notification.metadata as Record<string, unknown>).eventType === eventType ? notification : null;
+  });
+}
+
+export function createNotificationResponse(input: {
+  notificationId: string;
+  userId: string;
+  status: string;
+  note?: string | null;
+}) {
+  return prisma.trNotificationResponse.create({ data: input });
+}
+
 export function findNotifications(
   userId: string,
   input: ListNotificationsInput
@@ -59,6 +118,7 @@ export function findNotifications(
     include: {
       home: { select: { id: true, name: true } },
       device: { select: { id: true, deviceId: true, name: true } },
+      responses: { orderBy: { createdAt: "asc" } },
     },
   });
 }
@@ -77,6 +137,72 @@ export function createNotification(input: CreateNotificationInput) {
       body: input.body ?? null,
       homeId: input.homeId ?? null,
       deviceId: input.deviceId ?? null,
+      metadata,
+    },
+  });
+}
+
+export function findAllDueFollowUpNotifications(now: Date) {
+  return prisma.trNotification.findMany({
+    where: { type: "alarm" },
+    orderBy: { createdAt: "asc" },
+    take: 50,
+  }).then((notifications) =>
+    notifications.filter((notification) => {
+      const metadata = notification.metadata;
+      if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return false;
+      const record = metadata as Record<string, unknown>;
+      if (typeof record.resolvedAt === "string") return false;
+      if (typeof record.respondedAt === "string") return false;
+      if (typeof record.followUpSentAt === "string") return false;
+      if (typeof record.followUpAt !== "string") return false;
+      return new Date(record.followUpAt).getTime() <= now.getTime();
+    })
+  );
+}
+
+export function findDueFollowUpNotifications(userId: string, now: Date) {
+  return prisma.trNotification.findMany({
+    where: {
+      userId,
+      type: "alarm",
+    },
+    orderBy: { createdAt: "asc" },
+    take: 20,
+  }).then((notifications) =>
+    notifications.filter((notification) => {
+      const metadata = notification.metadata;
+      if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return false;
+      const record = metadata as Record<string, unknown>;
+      if (typeof record.resolvedAt === "string") return false;
+      if (typeof record.respondedAt === "string") return false;
+      if (typeof record.followUpSentAt === "string") return false;
+      if (typeof record.followUpAt !== "string") return false;
+      return new Date(record.followUpAt).getTime() <= now.getTime();
+    })
+  );
+}
+
+export function findNotificationById(userId: string, notificationId: string) {
+  return prisma.trNotification.findFirst({
+    where: { id: notificationId, userId },
+    include: {
+      home: { select: { id: true, name: true } },
+      device: { select: { id: true, deviceId: true, name: true } },
+      responses: { orderBy: { createdAt: "asc" } },
+    },
+  });
+}
+
+export function updateNotificationMetadata(
+  userId: string,
+  notificationId: string,
+  metadata: Prisma.InputJsonValue
+) {
+  return prisma.trNotification.updateMany({
+    where: { id: notificationId, userId },
+    data: {
+      readAt: new Date(),
       metadata,
     },
   });
