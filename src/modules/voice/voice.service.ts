@@ -1,3 +1,4 @@
+import { config } from "@/config";
 import { createDeviceCommand } from "@/modules/iot/iot.repository";
 import { createUserNotification } from "@/modules/notifications/notifications.service";
 import { findDeviceById } from "@/modules/devices/devices.repository";
@@ -252,5 +253,48 @@ export async function processVoiceText(input: ProcessVoiceTextInput) {
     confidence: result.confidence,
     responseText: result.responseText ?? null,
     action: result.notification ? "caregiver_notified" : "core_response_queued",
+  };
+}
+
+export async function processDeviceVoiceAudio(audio: Buffer, deviceId: string) {
+  if (!config.voiceAudioProcessorUrl) {
+    throw new AppError("Voice audio processor is not configured", 501);
+  }
+
+  if (audio.length < 1000) {
+    throw new AppError("Audio stream is too short", 400);
+  }
+
+  const response = await fetch(config.voiceAudioProcessorUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/octet-stream",
+    },
+    body: audio,
+  });
+
+  if (!response.ok) {
+    throw new AppError("Voice audio processor failed", 502);
+  }
+
+  const result = (await response.json()) as {
+    message?: string;
+    audio_url?: string | null;
+    audioUrl?: string | null;
+    text?: string;
+  };
+  const audioUrl = result.audio_url ?? result.audioUrl ?? null;
+  const absoluteAudioUrl = audioUrl && audioUrl.startsWith("/") && config.voiceAudioBaseUrl
+    ? `${config.voiceAudioBaseUrl}${audioUrl}`
+    : audioUrl;
+
+  if (result.text) {
+    await processVoiceText({ transcript: result.text, deviceId });
+  }
+
+  return {
+    message: result.message ?? null,
+    transcript: result.text ?? null,
+    audioUrl: absoluteAudioUrl,
   };
 }

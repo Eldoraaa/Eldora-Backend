@@ -16,4 +16,6 @@ export const config = {
   firebaseServiceAccountPath: process.env.FIREBASE_SERVICE_ACCOUNT_PATH ?? "./firebase-service-account.json",
   iotDeviceProvisioningSecret:
     process.env.IOT_DEVICE_PROVISIONING_SECRET?.trim() || null,
+  voiceAudioProcessorUrl: process.env.VOICE_AUDIO_PROCESSOR_URL?.trim() || null,
+  voiceAudioBaseUrl: process.env.VOICE_AUDIO_BASE_URL?.trim() || null,
 };
