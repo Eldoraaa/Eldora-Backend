@@ -39,6 +39,33 @@ export function findSceneById(userId: string, sceneId: string) {
   });
 }
 
+export function findExecutableSceneById(userId: string, sceneId: string) {
+  return prisma.msScene.findFirst({
+    where: {
+      id: sceneId,
+      home: { members: { some: { userId } } },
+      isEnabled: true,
+    },
+    include: {
+      home: { include: { members: { select: { userId: true } } } },
+      roomCategory: { select: { id: true, name: true, slug: true } },
+    },
+  });
+}
+
+export function findEnabledScheduleScenes() {
+  return prisma.msScene.findMany({
+    where: {
+      triggerType: "schedule",
+      isEnabled: true,
+    },
+    include: {
+      home: { include: { members: { select: { userId: true } } } },
+      roomCategory: { select: { id: true, name: true, slug: true } },
+    },
+  });
+}
+
 export function findEnabledScenesForHomeEvent(
   homeId: string,
   triggerType: SceneTriggerType
@@ -51,6 +78,7 @@ export function findEnabledScenesForHomeEvent(
     },
     orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
     include: {
+      home: { include: { members: { select: { userId: true } } } },
       roomCategory: { select: { id: true, name: true, slug: true } },
     },
   });

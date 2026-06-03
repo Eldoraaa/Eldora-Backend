@@ -3,6 +3,7 @@ import { sendSuccess } from "@/utils/response.utils";
 import {
   createSceneForHome,
   deleteUserScene,
+  executeUserScene,
   getScene,
   getScenes,
   getSceneTemplates,
@@ -54,6 +55,14 @@ export async function updateSceneController(
   const body = updateSceneSchema.parse(req.body);
   const scene = await updateUserScene(req.user!.id, req.params.id as string, body);
   sendSuccess(res, scene, "Scene updated");
+}
+
+export async function executeSceneController(
+  req: Request,
+  res: Response
+): Promise<void> {
+  await executeUserScene(req.user!.id, req.params.id as string);
+  sendSuccess(res, null, "Scene executed");
 }
 
 export async function deleteSceneController(
