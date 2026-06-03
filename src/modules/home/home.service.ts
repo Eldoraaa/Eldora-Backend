@@ -391,12 +391,19 @@ export async function deleteHomeMember(
 ) {
   const home = await findUserHomeById(userId, homeId);
   if (!home) throw new AppError("Home not found", 404);
-  assertCanManageHome(home, userId);
   const targetMember = home.members.find((member) => member.id === memberId);
   if (!targetMember) throw new AppError("Member not found", 404);
+
   if (targetMember.userId === userId) {
-    throw new AppError("You cannot remove yourself from the home", 400);
+    const ownerCount = home.members.filter((member) => member.role === "home_owner").length;
+    if (targetMember.role === "home_owner" && ownerCount <= 1) {
+      throw new AppError("Transfer home ownership before leaving this home", 400);
+    }
+    await removeHomeMember(homeId, memberId);
+    return;
   }
+
+  assertCanManageHome(home, userId);
   await removeHomeMember(homeId, memberId);
 }
 

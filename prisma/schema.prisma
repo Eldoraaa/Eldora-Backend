@@ -256,7 +256,7 @@ model MsDevice {
   elderProfileId  String
   elderProfile    MsElderProfile           @relation(fields: [elderProfileId], references: [id])
   roomCategoryId  String?
-  roomCategory    MsRoomCategory?          @relation(fields: [roomCategoryId], references: [id])
+  roomCategory    MsRoomCategory?          @relation(fields: [roomCategoryId], references: [id], onDelete: SetNull)
   commands        TrDeviceCommand[]
   pairingRequests TrDevicePairingRequest[]
   notifications   TrNotification[]
