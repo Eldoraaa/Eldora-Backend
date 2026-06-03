@@ -17,6 +17,8 @@ enum UserRole {
 
 enum DeviceCommandType {
   configure_wifi
+  activate_local_alarm
+  speak_on_core
 }
 
 enum DeviceCommandStatus {
@@ -77,10 +79,49 @@ model MsUser {
   homeMemberships TrHomeMember[]
   homeInvitations TrHomeInvitation[] @relation("HomeInvitationCreator")
   notificationPreference MsNotificationPreference?
+  notificationDeviceTokens MsNotificationDeviceToken[]
   notifications TrNotification[]
+  notificationResponses TrNotificationResponse[]
+  emergencyContacts MsEmergencyContact[]
   createdScenes MsScene[] @relation("SceneCreator")
 
   @@map("MsUser")
+}
+
+model MsEmergencyContact {
+  id        String   @id @default(cuid())
+  name      String
+  phone     String
+  relation  String?
+  isPrimary Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId String
+  user   MsUser   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  homeId String?
+  home   MsHome?  @relation(fields: [homeId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isPrimary])
+  @@index([homeId, isPrimary])
+  @@map("MsEmergencyContact")
+}
+
+model MsNotificationDeviceToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  platform  String?
+  deviceId  String?
+  lastSeen  DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId String
+  user   MsUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("MsNotificationDeviceToken")
 }
 
 model MsNotificationPreference {
@@ -123,6 +164,7 @@ model MsHome {
   invitations TrHomeInvitation[]
   scenes      MsScene[]
   notifications TrNotification[]
+  emergencyContacts MsEmergencyContact[]
 
   @@map("MsHome")
 }
@@ -303,6 +345,22 @@ model MsScene {
   @@map("MsScene")
 }
 
+model TrNotificationResponse {
+  id        String   @id @default(cuid())
+  status    String
+  note      String?
+  createdAt DateTime @default(now())
+
+  notificationId String
+  notification   TrNotification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   MsUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([notificationId, createdAt])
+  @@map("TrNotificationResponse")
+}
+
 model TrNotification {
   id        String           @id @default(cuid())
   type      NotificationType
@@ -321,6 +379,8 @@ model TrNotification {
 
   deviceId String?
   device   MsDevice? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  responses TrNotificationResponse[]
 
   @@index([userId, type, createdAt])
   @@index([homeId])

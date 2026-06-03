@@ -7,9 +7,13 @@ import { errorHandler, requestLogger } from "@/middlewares";
 import authRoutes from "@/modules/auth";
 import homeRoutes from "@/modules/home";
 import iotRoutes from "@/modules/iot";
+import { processStaleDeviceOfflineEvents } from "@/modules/iot/iot.service";
 import devicesRoutes from "@/modules/devices";
 import notificationRoutes from "@/modules/notifications";
+import { processAllDueFollowUps } from "@/modules/notifications/notifications.service";
 import sceneRoutes from "@/modules/scenes";
+import voiceRoutes from "@/modules/voice";
+import { processDueScheduledScenes } from "@/modules/scenes/scenes.service";
 
 const app = express();
 
@@ -57,6 +61,7 @@ app.use("/iot", iotRoutes);
 app.use("/devices", devicesRoutes);
 app.use("/notifications", notificationRoutes);
 app.use("/scenes", sceneRoutes);
+app.use("/voice", voiceRoutes);
 
 // 404
 app.use((_req, res) => {
@@ -78,9 +83,28 @@ async function bootstrap(): Promise<void> {
     );
   });
 
+  const followUpInterval = setInterval(() => {
+    void processAllDueFollowUps().catch((error) => {
+      console.warn("[Notifications] Follow-up processor failed:", error);
+    });
+  }, 60_000);
+  const scheduledSceneInterval = setInterval(() => {
+    void processDueScheduledScenes().catch((error) => {
+      console.warn("[Scenes] Scheduled scene processor failed:", error);
+    });
+  }, 60_000);
+  const offlineDetectorInterval = setInterval(() => {
+    void processStaleDeviceOfflineEvents().catch((error) => {
+      console.warn("[IoT] Offline detector failed:", error);
+    });
+  }, 60_000);
+
   // Graceful shutdown
   const shutdown = async (signal: string): Promise<void> => {
     console.log(`\n[Server] ${signal} received - shutting down...`);
+    clearInterval(followUpInterval);
+    clearInterval(scheduledSceneInterval);
+    clearInterval(offlineDetectorInterval);
     server.close(async () => {
       await prisma.$disconnect();
       console.log("[Server] Closed");

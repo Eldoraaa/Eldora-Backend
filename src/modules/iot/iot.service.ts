@@ -3,11 +3,15 @@ import { hashLocalPairingToken } from "@/shared/security";
 import { DeviceTelemetry } from "@/types/iot.types";
 import { findDeviceById } from "@/modules/devices/devices.repository";
 import { findFirstUserHome } from "@/modules/home/home.repository";
+import { findRecentDeviceEventNotification } from "@/modules/notifications/notifications.repository";
 import { createUserNotification } from "@/modules/notifications/notifications.service";
 import { findEnabledScenesForHomeEvent } from "@/modules/scenes/scenes.repository";
-import { SceneTriggerType } from "../../../generated/prisma/client";
+import { executeSceneActions } from "@/modules/scenes/scenes.service";
+import { DeviceCommandType, Prisma, SceneTriggerType } from "../../../generated/prisma/client";
 import {
+  createDeviceCommand,
   findCommandForDevice,
+  findStaleOnlineDevices,
   findPendingCommands,
   markCommandsDelivered,
   updateCommand,
@@ -28,6 +32,17 @@ type DeviceOfflineEventInput = {
 };
 
 type JsonRecord = Record<string, unknown>;
+type SceneDeviceCommand = {
+  deviceId: string;
+  commandType: DeviceCommandType;
+  payload: Prisma.InputJsonValue;
+};
+
+function isDatabaseReachabilityError(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+  const code = (error as { code?: unknown }).code;
+  return code === "P1001" || code === "P1002";
+}
 
 function asRecord(value: unknown): JsonRecord | null {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -71,6 +86,11 @@ function sceneDeviceBindings(triggerConfig: unknown, actions: unknown) {
   };
 }
 
+function deviceTypeFromDevice(device: { name: string | null; deviceId: string }) {
+  const haystack = `${device.name ?? ""} ${device.deviceId}`.toLowerCase();
+  return haystack.includes("aegis") || haystack.includes("wear") ? "aegiswear" : "eldora_core";
+}
+
 function sceneMatchesDevice(
   scene: Awaited<ReturnType<typeof findEnabledScenesForHomeEvent>>[number],
   conditionKind: string,
@@ -81,7 +101,7 @@ function sceneMatchesDevice(
   const bindings = sceneDeviceBindings(scene.triggerConfig, scene.actions);
   return conditions.some((condition) =>
     condition?.kind === conditionKind &&
-    condition.deviceType === deviceType &&
+    (condition.deviceType === "any" || condition.deviceType === deviceType) &&
     (!bindings[deviceType] || bindings[deviceType] === deviceId)
   );
 }
@@ -99,6 +119,12 @@ async function findMatchingDeviceScenes(
   return scenes.filter((scene) =>
     sceneMatchesDevice(scene, conditionKind, deviceType, deviceId)
   );
+}
+
+function sceneActionTypes(scene: Awaited<ReturnType<typeof findEnabledScenesForHomeEvent>>[number] | undefined) {
+  return sceneActionSteps(scene?.actions)
+    .map((step) => asString(step.type))
+    .filter((type): type is string => Boolean(type));
 }
 
 function notificationActionFromScene(
@@ -139,6 +165,62 @@ function notificationInputFromAction(
     sound: asString(action?.sound) ?? fallback.sound,
     delayMinutes: asNumber(action?.delayMinutes),
   };
+}
+
+function targetDeviceIdForAction(
+  step: JsonRecord,
+  bindings: JsonRecord,
+  fallbackDeviceType: "aegiswear" | "eldora_core",
+  fallbackDeviceId: string
+) {
+  const target = asString(step.target);
+  if (target === "aegiswear") {
+    return asString(bindings.aegiswear) ?? (fallbackDeviceType === "aegiswear" ? fallbackDeviceId : undefined);
+  }
+  if (target === "eldora_core") {
+    return asString(bindings.eldora_core) ?? (fallbackDeviceType === "eldora_core" ? fallbackDeviceId : undefined);
+  }
+  return undefined;
+}
+
+async function queueSceneDeviceActions(
+  scene: Awaited<ReturnType<typeof findEnabledScenesForHomeEvent>>[number] | undefined,
+  fallbackDeviceType: "aegiswear" | "eldora_core",
+  fallbackDeviceId: string
+) {
+  if (!scene) return;
+
+  const bindings = sceneDeviceBindings(scene.triggerConfig, scene.actions);
+  const commands: SceneDeviceCommand[] = sceneActionSteps(scene.actions).flatMap((step): SceneDeviceCommand[] => {
+    const type = asString(step.type);
+    const deviceId = targetDeviceIdForAction(step, bindings, fallbackDeviceType, fallbackDeviceId);
+    if (!deviceId) return [];
+
+    if (type === "activate_local_alarm") {
+      return [{ deviceId, commandType: DeviceCommandType.activate_local_alarm, payload: { source: "scene", sceneId: scene.id } }];
+    }
+    if (type === "speak_on_core" || type === "core_voice_check_in") {
+      return [
+        {
+          deviceId,
+          commandType: DeviceCommandType.speak_on_core,
+          payload: {
+            source: "scene",
+            sceneId: scene.id,
+            message: asString(step.message) ?? "Your family is checking in. Are you feeling okay?",
+          },
+        },
+      ];
+    }
+
+    return [];
+  });
+
+  await Promise.all(
+    commands.map((command) =>
+      createDeviceCommand(command.deviceId, command.commandType, command.payload)
+    )
+  );
 }
 
 export async function updateDeviceHeartbeat(
@@ -210,6 +292,22 @@ export async function acknowledgeCommand(
   });
 }
 
+export async function processStaleDeviceOfflineEvents() {
+  try {
+    const cutoff = new Date(Date.now() - 10 * 60 * 1000);
+    const devices = await findStaleOnlineDevices(cutoff);
+    await Promise.all(
+      devices.map((device) => reportDeviceOfflineEvent(device.id, { occurredAt: new Date() }))
+    );
+  } catch (error) {
+    if (isDatabaseReachabilityError(error)) {
+      console.warn("[IoT] Offline detector skipped: database is not reachable");
+      return;
+    }
+    throw error;
+  }
+}
+
 export async function reportFallEvent(
   deviceId: string,
   input: FallEventInput
@@ -229,38 +327,32 @@ export async function reportFallEvent(
             device.id
           )
         : [];
-      const matchedScenes = scenes.length > 0 ? scenes : [undefined];
+      if (scenes.length > 0) {
+        await Promise.all(
+          scenes.map((scene) => executeSceneActions(scene, "fall_detected", device.id))
+        );
+        return;
+      }
 
-      await Promise.all(
-        matchedScenes.map(async (scene) => {
-          const action = notificationActionFromScene(scene);
-          const notification = notificationInputFromAction(action, {
-            type: "alarm",
-            title: "Fall detected",
-            body: `${device.name ?? "AegisWear"} detected a fall. Check immediately.`,
-            severity: "critical",
-            sound: "critical_alert",
-          });
-
-          await createUserNotification({
-            userId,
-            type: notification.type,
-            title: notification.title,
-            body: notification.body,
-            homeId: home?.id ?? null,
-            deviceId: device.id,
-            metadata: {
-              eventType: "fall_detected",
-              severity: notification.severity,
-              sound: notification.sound,
-              sceneId: scene?.id ?? null,
-              confidence: input.confidence ?? null,
-              occurredAt: input.occurredAt?.toISOString() ?? new Date().toISOString(),
-              location: input.location ?? null,
-            },
-          });
-        })
-      );
+      await createUserNotification({
+        userId,
+        type: "alarm",
+        title: "Fall detected",
+        body: `${device.name ?? "AegisWear"} detected a fall. Check immediately.`,
+        homeId: home?.id ?? null,
+        deviceId: device.id,
+        metadata: {
+          eventType: "fall_detected",
+          severity: "critical",
+          sound: "critical_alert",
+          sceneId: null,
+          confidence: input.confidence ?? null,
+          occurredAt: input.occurredAt?.toISOString() ?? new Date().toISOString(),
+          location: input.location ?? null,
+          showCallAction: true,
+          followUpAt: null,
+        },
+      });
     })
   );
 }
@@ -271,6 +363,8 @@ export async function reportDeviceOfflineEvent(
 ): Promise<void> {
   const device = await findDeviceById(deviceId);
   const caregiverIds = device.elderProfile.userLinks.map((link) => link.userId);
+  const deviceType = deviceTypeFromDevice(device);
+  const fallbackTitle = deviceType === "aegiswear" ? "AegisWear offline" : "Eldora Core offline";
 
   await updateDevice(device.id, {
     isOnline: false,
@@ -279,45 +373,48 @@ export async function reportDeviceOfflineEvent(
 
   await Promise.all(
     caregiverIds.map(async (userId) => {
+      const recentOffline = await findRecentDeviceEventNotification(
+        userId,
+        device.id,
+        "device_offline",
+        new Date(Date.now() - 30 * 60 * 1000)
+      );
+      if (recentOffline) return;
+
       const homeId = device.roomCategory?.homeId;
       const home = homeId ? { id: homeId } : await findFirstUserHome(userId);
       const scenes = home
         ? await findMatchingDeviceScenes(
             home.id,
             "device_offline",
-            "eldora_core",
+            deviceType,
             device.id
           )
         : [];
-      const matchedScenes = scenes.length > 0 ? scenes : [undefined];
+      if (scenes.length > 0) {
+        await Promise.all(
+          scenes.map((scene) => executeSceneActions(scene, "device_offline", device.id))
+        );
+        return;
+      }
 
-      await Promise.all(
-        matchedScenes.map(async (scene) => {
-          const action = notificationActionFromScene(scene);
-          const notification = notificationInputFromAction(action, {
-            type: "device",
-            title: "Eldora Core offline",
-            body: `${device.name ?? "Eldora Core"} has been offline for 10 minutes.`,
-            severity: "warning",
-          });
-
-          await createUserNotification({
-            userId,
-            type: notification.type,
-            title: notification.title,
-            body: notification.body,
-            homeId: home?.id ?? null,
-            deviceId: device.id,
-            metadata: {
-              eventType: "device_offline",
-              severity: notification.severity,
-              sound: notification.sound ?? null,
-              sceneId: scene?.id ?? null,
-              occurredAt: input.occurredAt?.toISOString() ?? new Date().toISOString(),
-            },
-          });
-        })
-      );
+      await createUserNotification({
+        userId,
+        type: "device",
+        title: fallbackTitle,
+        body: `${device.name ?? fallbackTitle} has been offline for 10 minutes.`,
+        homeId: home?.id ?? null,
+        deviceId: device.id,
+        metadata: {
+          eventType: "device_offline",
+          severity: "warning",
+          sound: null,
+          sceneId: null,
+          occurredAt: input.occurredAt?.toISOString() ?? new Date().toISOString(),
+          showCallAction: false,
+          followUpAt: null,
+        },
+      });
     })
   );
 }

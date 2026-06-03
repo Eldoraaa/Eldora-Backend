@@ -3,11 +3,17 @@ import { randomBytes } from "crypto";
 import type { HomeMemberRole } from "../../../generated/prisma/client";
 import {
   acceptHomeInvitation,
+  clearPrimaryEmergencyContacts,
+  createEmergencyContact,
   createHomeInvitation,
   createHomeForUser,
+  deleteEmergencyContact,
   ensureDefaultRoomsForHome,
+  findEmergencyContacts,
+  findOpenAlarmNotifications,
   findPendingInvitationByCode,
   findFirstUserHome,
+  findRecentUserNotifications,
   findUserHomeById,
   findUserHomes,
   findUserHomeSummary,
@@ -16,7 +22,8 @@ import {
   updateHomeMemberRole,
 } from "./home.repository";
 
-const DEVICE_ONLINE_WINDOW_MS = 2 * 60 * 1000;
+const DEVICE_ONLINE_WINDOW_MS = 10 * 60 * 1000;
+const LOW_BATTERY_THRESHOLD = 20;
 const INVITATION_EXPIRY_DAYS = 3;
 
 function isRecentlySeen(lastSeen: Date | null): boolean {
@@ -24,16 +31,199 @@ function isRecentlySeen(lastSeen: Date | null): boolean {
   return Date.now() - lastSeen.getTime() <= DEVICE_ONLINE_WINDOW_MS;
 }
 
+function buildSummaryDevices(user: Awaited<ReturnType<typeof findUserHomeSummary>>) {
+  return (
+    user?.elderProfileLinks.flatMap((link) =>
+      link.elderProfile.devices.map((device) => ({
+        ...device,
+        elderName: link.elderProfile.name,
+        isOnline: Boolean(device.isOnline && isRecentlySeen(device.lastSeen)),
+      }))
+    ) ?? []
+  );
+}
+
+function metadataRecord(metadata: unknown) {
+  return metadata && typeof metadata === "object" && !Array.isArray(metadata)
+    ? (metadata as Record<string, unknown>)
+    : {};
+}
+
+function notificationEventType(notification: { metadata: unknown }) {
+  const metadata = metadataRecord(notification.metadata);
+  return typeof metadata.eventType === "string" ? metadata.eventType : null;
+}
+
+function notificationSeverity(notification: { metadata: unknown }) {
+  const metadata = metadataRecord(notification.metadata);
+  return typeof metadata.severity === "string" ? metadata.severity : "normal";
+}
+
+function notificationIsResolved(notification: { metadata: unknown }) {
+  return typeof metadataRecord(notification.metadata).resolvedAt === "string";
+}
+
+function deviceRiskFlags(devices: ReturnType<typeof buildSummaryDevices>) {
+  const offlineCount = devices.filter((device) => !device.isOnline).length;
+  const staleCount = devices.filter((device) => !device.lastSeen).length;
+  const lowBatteryCount = devices.filter(
+    (device) => typeof device.batteryLevel === "number" && device.batteryLevel <= LOW_BATTERY_THRESHOLD
+  ).length;
+
+  return {
+    offlineCount,
+    staleCount,
+    lowBatteryCount,
+    flags: [
+      ...(offlineCount > 0 ? ["device_offline"] : []),
+      ...(staleCount > 0 ? ["no_heartbeat"] : []),
+      ...(lowBatteryCount > 0 ? ["low_battery"] : []),
+    ],
+  };
+}
+
 export async function getHomeSummary(userId: string) {
   const user = await findUserHomeSummary(userId);
-  const devices = (
-    user?.elderProfileLinks.flatMap((link) => link.elderProfile.devices) ?? []
-  ).map((device) => ({
-      ...device,
-      isOnline: Boolean(device.isOnline && isRecentlySeen(device.lastSeen)),
-    }));
+  return { devices: buildSummaryDevices(user) };
+}
 
-  return { devices };
+export async function getSafetySummary(userId: string, homeId?: string | null) {
+  const user = await findUserHomeSummary(userId);
+  const devices = buildSummaryDevices(user).filter((device) => !homeId || device.roomCategory?.homeId === homeId);
+  const notifications = (await findRecentUserNotifications(userId, 10)).filter((notification) => !homeId || notification.homeId === homeId);
+  const openAlerts = await findOpenAlarmNotifications(userId, homeId);
+  const scopedContacts = await findEmergencyContacts(userId, homeId);
+  const contacts = scopedContacts.length > 0 || !homeId ? scopedContacts : await findEmergencyContacts(userId, null);
+  const openAlert = openAlerts[0] ?? null;
+  const primaryDevice =
+    devices.find((device) => `${device.name ?? ""} ${device.deviceId}`.toLowerCase().includes("aegis")) ??
+    devices[0] ??
+    null;
+  const deviceFlags = deviceRiskFlags(devices);
+  const recentCriticalAlerts = notifications.filter(
+    (notification) => notificationSeverity(notification) === "critical"
+  ).length;
+  const unresolvedCriticalCount = openAlerts.filter(
+    (notification) => notificationSeverity(notification) === "critical" && !notificationIsResolved(notification)
+  ).length;
+  const pendingFollowUpCount = openAlerts.filter((notification) => {
+    const metadata = metadataRecord(notification.metadata);
+    return typeof metadata.followUpAt === "string" && typeof metadata.followUpSentAt !== "string";
+  }).length;
+  const riskScore = Math.min(
+    100,
+    openAlert ? 85 + Math.min(unresolvedCriticalCount * 5, 10)
+      : devices.length === 0 ? 50
+        : 18 + deviceFlags.offlineCount * 28 + deviceFlags.lowBatteryCount * 12 + recentCriticalAlerts * 8
+  );
+  const riskLevel = riskScore >= 80 ? "high" : riskScore >= 50 ? "medium" : "low";
+  const anomalyFlags = [
+    ...(openAlert ? ["open_alert"] : []),
+    ...(unresolvedCriticalCount > 0 ? ["unresolved_critical"] : []),
+    ...(pendingFollowUpCount > 0 ? ["no_response_alert"] : []),
+    ...(recentCriticalAlerts >= 2 ? ["frequent_alerts"] : []),
+    ...deviceFlags.flags,
+  ];
+
+  return {
+    elder: primaryDevice
+      ? { name: primaryDevice.elderName, primaryDeviceId: primaryDevice.id }
+      : null,
+    status: openAlert ? "needs_attention" : primaryDevice?.isOnline ? "safe" : primaryDevice ? "device_offline" : "setup_needed",
+    openAlert,
+    latestEvent: notifications[0] ?? null,
+    emergencyContact: contacts[0] ?? null,
+    unresolvedAlertCount: openAlerts.length,
+    risk: {
+      score: riskScore,
+      level: riskLevel,
+      anomalyFlags,
+      recommendation: openAlert
+        ? "Respond to the open alert immediately."
+        : deviceFlags.offlineCount > 0
+          ? "Check offline devices before relying on automation."
+          : deviceFlags.lowBatteryCount > 0
+            ? "Charge low-battery devices to keep monitoring reliable."
+            : "Monitoring is normal based on available device data.",
+    },
+    devices,
+  };
+}
+
+export async function getWellnessSummary(userId: string, homeId?: string | null) {
+  const user = await findUserHomeSummary(userId);
+  const devices = buildSummaryDevices(user).filter((device) => !homeId || device.roomCategory?.homeId === homeId);
+  const notifications = (await findRecentUserNotifications(userId, 25)).filter((notification) => !homeId || notification.homeId === homeId);
+  const openAlerts = await findOpenAlarmNotifications(userId, homeId);
+  const deviceFlags = deviceRiskFlags(devices);
+  const criticalCount = notifications.filter((notification) => notificationSeverity(notification) === "critical").length;
+  const fallCount = notifications.filter((notification) => notificationEventType(notification) === "fall_detected").length;
+  const sosCount = notifications.filter((notification) => notificationEventType(notification) === "sos").length;
+  const followUpCount = notifications.filter((notification) => notificationEventType(notification) === "alert_follow_up").length;
+  const responseCount = notifications.reduce((total, notification) => {
+    const responses = "responses" in notification && Array.isArray(notification.responses) ? notification.responses.length : 0;
+    return total + responses;
+  }, 0);
+  const distressScore = Math.min(
+    100,
+    criticalCount * 25 + openAlerts.length * 30 + followUpCount * 18 + deviceFlags.offlineCount * 12 + deviceFlags.lowBatteryCount * 8
+  );
+  const distressLevel = distressScore >= 70 ? "high" : distressScore >= 35 ? "medium" : "low";
+  const moodTrend = distressLevel === "high" ? "distressed" : distressLevel === "medium" ? "needs_attention" : "stable";
+  const interactionSummary = responseCount > 0
+    ? `${responseCount} caregiver response(s) recorded across recent Eldora alerts.`
+    : notifications.length > 0
+      ? "Recent alerts were recorded, but caregiver response activity is still limited."
+      : "No recent alert or interaction activity recorded.";
+  const careSignals = [
+    ...(fallCount > 0 ? [`${fallCount} fall alert(s)`] : []),
+    ...(sosCount > 0 ? [`${sosCount} SOS request(s)`] : []),
+    ...(followUpCount > 0 ? [`${followUpCount} unresolved follow-up alert(s)`] : []),
+    ...(deviceFlags.offlineCount > 0 ? [`${deviceFlags.offlineCount} offline device(s)`] : []),
+    ...(deviceFlags.lowBatteryCount > 0 ? [`${deviceFlags.lowBatteryCount} low-battery device(s)`] : []),
+  ];
+
+  return {
+    period: "recent_activity",
+    moodTrend,
+    distressLevel,
+    distressScore,
+    interactionSummary,
+    careSignals,
+    recommendation: openAlerts.length > 0
+      ? "Prioritize resolving open alerts and confirming the elder is safe."
+      : distressLevel === "medium"
+        ? "Check in with the elder and review device reliability."
+        : "Wellness signals look stable based on available Eldora activity.",
+    generatedAt: new Date().toISOString(),
+  };
+}
+
+async function assertHomeAccessIfProvided(userId: string, homeId?: string | null) {
+  if (!homeId) return;
+  const home = await findUserHomeById(userId, homeId);
+  if (!home) throw new AppError("Home not found", 404);
+}
+
+export async function getEmergencyContacts(userId: string, homeId?: string | null) {
+  const contacts = await findEmergencyContacts(userId, homeId);
+  if (contacts.length > 0 || !homeId) return contacts;
+  return findEmergencyContacts(userId, null);
+}
+
+export async function addEmergencyContact(
+  userId: string,
+  input: { name: string; phone: string; relation?: string | null; isPrimary?: boolean; homeId?: string | null }
+) {
+  await assertHomeAccessIfProvided(userId, input.homeId);
+  if (input.isPrimary) {
+    await clearPrimaryEmergencyContacts(userId, input.homeId);
+  }
+  return createEmergencyContact(userId, input);
+}
+
+export async function removeEmergencyContact(userId: string, contactId: string) {
+  await deleteEmergencyContact(userId, contactId);
 }
 
 function formatRole(role: HomeMemberRole) {
@@ -185,6 +375,12 @@ export async function changeHomeMemberRole(
 ) {
   const home = await findUserHomeById(userId, homeId);
   if (!home) throw new AppError("Home not found", 404);
+  assertCanManageHome(home, userId);
+  const targetMember = home.members.find((member) => member.id === memberId);
+  if (!targetMember) throw new AppError("Member not found", 404);
+  if (targetMember.userId === userId && role === "common_member") {
+    throw new AppError("Home owners or administrators cannot demote themselves", 400);
+  }
   await updateHomeMemberRole(homeId, memberId, role);
 }
 
@@ -195,6 +391,12 @@ export async function deleteHomeMember(
 ) {
   const home = await findUserHomeById(userId, homeId);
   if (!home) throw new AppError("Home not found", 404);
+  assertCanManageHome(home, userId);
+  const targetMember = home.members.find((member) => member.id === memberId);
+  if (!targetMember) throw new AppError("Member not found", 404);
+  if (targetMember.userId === userId) {
+    throw new AppError("You cannot remove yourself from the home", 400);
+  }
   await removeHomeMember(homeId, memberId);
 }
 

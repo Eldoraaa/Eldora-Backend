@@ -26,3 +26,11 @@ export const createHomeInvitationSchema = z.object({
   email: z.string().trim().email().nullable().optional(),
   role: memberRoleSchema.default("common_member"),
 });
+
+export const createEmergencyContactSchema = z.object({
+  name: z.string().trim().min(1, "Contact name is required").max(80),
+  phone: z.string().trim().min(5, "Phone number is required").max(32),
+  relation: z.string().trim().max(60).nullable().optional(),
+  isPrimary: z.boolean().optional(),
+  homeId: z.string().trim().min(1).nullable().optional(),
+});

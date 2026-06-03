@@ -10,6 +10,53 @@ export const DEFAULT_HOME_ROOMS = [
   { name: "Outdoor", slug: "outdoor", sortOrder: 60 },
 ];
 
+export function findEmergencyContacts(userId: string, homeId?: string | null) {
+  return prisma.msEmergencyContact.findMany({
+    where: { userId, ...(homeId ? { homeId } : {}) },
+    orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
+  });
+}
+
+export function clearPrimaryEmergencyContacts(userId: string, homeId?: string | null) {
+  return prisma.msEmergencyContact.updateMany({
+    where: { userId, homeId: homeId ?? null },
+    data: { isPrimary: false },
+  });
+}
+
+export function createEmergencyContact(
+  userId: string,
+  input: { name: string; phone: string; relation?: string | null; isPrimary?: boolean; homeId?: string | null }
+) {
+  return prisma.msEmergencyContact.create({
+    data: {
+      userId,
+      homeId: input.homeId ?? null,
+      name: input.name,
+      phone: input.phone,
+      relation: input.relation ?? null,
+      isPrimary: input.isPrimary ?? false,
+    },
+  });
+}
+
+export function updateEmergencyContact(
+  userId: string,
+  contactId: string,
+  input: { name?: string; phone?: string; relation?: string | null; isPrimary?: boolean }
+) {
+  return prisma.msEmergencyContact.updateMany({
+    where: { id: contactId, userId },
+    data: input,
+  });
+}
+
+export function deleteEmergencyContact(userId: string, contactId: string) {
+  return prisma.msEmergencyContact.deleteMany({
+    where: { id: contactId, userId },
+  });
+}
+
 export function findUserHomeSummary(userId: string) {
   return prisma.msUser.findUnique({
     where: { id: userId },
@@ -30,12 +77,48 @@ export function findUserHomeSummary(userId: string) {
                   wifiSsid: true,
                   wifiRssi: true,
                   firmwareVersion: true,
+                  roomCategory: { select: { homeId: true } },
                 },
               },
             },
           },
         },
       },
+    },
+  });
+}
+
+export function findOpenAlarmNotifications(userId: string, homeId?: string | null) {
+  return prisma.trNotification.findMany({
+    where: {
+      userId,
+      type: "alarm",
+      ...(homeId ? { homeId } : {}),
+    },
+    orderBy: { createdAt: "desc" },
+    take: 100,
+    include: {
+      device: { select: { id: true, deviceId: true, name: true } },
+      home: { select: { id: true, name: true } },
+    },
+  }).then((notifications) =>
+    notifications.filter((notification) => {
+      const metadata = notification.metadata;
+      if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return true;
+      return typeof (metadata as Record<string, unknown>).resolvedAt !== "string";
+    })
+  );
+}
+
+export function findRecentUserNotifications(userId: string, limit = 10) {
+  return prisma.trNotification.findMany({
+    where: { userId },
+    orderBy: { createdAt: "desc" },
+    take: limit,
+    include: {
+      device: { select: { id: true, deviceId: true, name: true } },
+      home: { select: { id: true, name: true } },
+      responses: { orderBy: { createdAt: "asc" } },
     },
   });
 }

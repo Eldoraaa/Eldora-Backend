@@ -1,10 +1,15 @@
 import { Router } from "express";
 import { authenticate } from "@/middlewares";
 import {
+  createEmergencyContactController,
   createHomeController,
   createHomeInvitationController,
+  deleteEmergencyContactController,
   getHomeSettingsController,
+  getSafetySummaryController,
   getSummary,
+  getWellnessSummaryController,
+  listEmergencyContactsController,
   joinHomeController,
   listHomes,
   removeHomeMemberController,
@@ -29,6 +34,11 @@ const router = Router();
  *         $ref: '#/components/responses/Unauthorized'
  */
 router.get("/summary", authenticate, getSummary);
+router.get("/safety-summary", authenticate, getSafetySummaryController);
+router.get("/wellness-summary", authenticate, getWellnessSummaryController);
+router.get("/emergency-contacts", authenticate, listEmergencyContactsController);
+router.post("/emergency-contacts", authenticate, createEmergencyContactController);
+router.delete("/emergency-contacts/:contactId", authenticate, deleteEmergencyContactController);
 router.get("/homes", authenticate, listHomes);
 router.post("/homes", authenticate, createHomeController);
 router.post("/homes/join", authenticate, joinHomeController);

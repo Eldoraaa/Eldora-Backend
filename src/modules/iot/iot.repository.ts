@@ -1,10 +1,34 @@
 import { prisma } from "@/config/database";
-import type { Prisma } from "../../../generated/prisma/client";
+import type { DeviceCommandType, Prisma } from "../../../generated/prisma/client";
+
+export function findStaleOnlineDevices(cutoff: Date) {
+  return prisma.msDevice.findMany({
+    where: {
+      isOnline: true,
+      OR: [{ lastSeen: null }, { lastSeen: { lt: cutoff } }],
+    },
+    take: 50,
+  });
+}
 
 export function updateDevice(deviceId: string, data: Prisma.MsDeviceUpdateInput) {
   return prisma.msDevice.update({
     where: { id: deviceId },
     data,
+  });
+}
+
+export function createDeviceCommand(
+  deviceId: string,
+  commandType: DeviceCommandType,
+  payload: Prisma.InputJsonValue
+) {
+  return prisma.trDeviceCommand.create({
+    data: {
+      deviceId,
+      commandType,
+      payload,
+    },
   });
 }
 
