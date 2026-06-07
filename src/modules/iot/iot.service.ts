@@ -88,13 +88,13 @@ function sceneDeviceBindings(triggerConfig: unknown, actions: unknown) {
 
 function deviceTypeFromDevice(device: { name: string | null; deviceId: string }) {
   const haystack = `${device.name ?? ""} ${device.deviceId}`.toLowerCase();
-  return haystack.includes("aegis") || haystack.includes("wear") ? "aegiswear" : "eldora_core";
+  return haystack.includes("dorashield") || haystack.includes("shield") || haystack.includes("vest") ? "dorashield" : "dorabot";
 }
 
 function sceneMatchesDevice(
   scene: Awaited<ReturnType<typeof findEnabledScenesForHomeEvent>>[number],
   conditionKind: string,
-  deviceType: "aegiswear" | "eldora_core",
+  deviceType: "dorashield" | "dorabot",
   deviceId: string
 ) {
   const conditions = sceneConditions(scene.triggerConfig);
@@ -109,7 +109,7 @@ function sceneMatchesDevice(
 async function findMatchingDeviceScenes(
   homeId: string,
   conditionKind: string,
-  deviceType: "aegiswear" | "eldora_core",
+  deviceType: "dorashield" | "dorabot",
   deviceId: string
 ) {
   const scenes = await findEnabledScenesForHomeEvent(
@@ -170,22 +170,22 @@ function notificationInputFromAction(
 function targetDeviceIdForAction(
   step: JsonRecord,
   bindings: JsonRecord,
-  fallbackDeviceType: "aegiswear" | "eldora_core",
+  fallbackDeviceType: "dorashield" | "dorabot",
   fallbackDeviceId: string
 ) {
   const target = asString(step.target);
-  if (target === "aegiswear") {
-    return asString(bindings.aegiswear) ?? (fallbackDeviceType === "aegiswear" ? fallbackDeviceId : undefined);
+  if (target === "dorashield") {
+    return asString(bindings.dorashield) ?? (fallbackDeviceType === "dorashield" ? fallbackDeviceId : undefined);
   }
-  if (target === "eldora_core") {
-    return asString(bindings.eldora_core) ?? (fallbackDeviceType === "eldora_core" ? fallbackDeviceId : undefined);
+  if (target === "dorabot") {
+    return asString(bindings.dorabot) ?? (fallbackDeviceType === "dorabot" ? fallbackDeviceId : undefined);
   }
   return undefined;
 }
 
 async function queueSceneDeviceActions(
   scene: Awaited<ReturnType<typeof findEnabledScenesForHomeEvent>>[number] | undefined,
-  fallbackDeviceType: "aegiswear" | "eldora_core",
+  fallbackDeviceType: "dorashield" | "dorabot",
   fallbackDeviceId: string
 ) {
   if (!scene) return;
@@ -199,11 +199,11 @@ async function queueSceneDeviceActions(
     if (type === "activate_local_alarm") {
       return [{ deviceId, commandType: DeviceCommandType.activate_local_alarm, payload: { source: "scene", sceneId: scene.id } }];
     }
-    if (type === "speak_on_core" || type === "core_voice_check_in") {
+    if (type === "speak_on_dorabot" || type === "dorabot_voice_check_in") {
       return [
         {
           deviceId,
-          commandType: DeviceCommandType.speak_on_core,
+          commandType: DeviceCommandType.speak_on_dorabot,
           payload: {
             source: "scene",
             sceneId: scene.id,
@@ -323,7 +323,7 @@ export async function reportFallEvent(
         ? await findMatchingDeviceScenes(
             home.id,
             "fall_detected",
-            "aegiswear",
+            "dorashield",
             device.id
           )
         : [];
@@ -338,7 +338,7 @@ export async function reportFallEvent(
         userId,
         type: "alarm",
         title: "Fall detected",
-        body: `${device.name ?? "AegisWear"} detected a fall. Check immediately.`,
+        body: `${device.name ?? "DoraShield"} detected a fall. Check immediately.`,
         homeId: home?.id ?? null,
         deviceId: device.id,
         metadata: {
@@ -364,7 +364,7 @@ export async function reportDeviceOfflineEvent(
   const device = await findDeviceById(deviceId);
   const caregiverIds = device.elderProfile.userLinks.map((link) => link.userId);
   const deviceType = deviceTypeFromDevice(device);
-  const fallbackTitle = deviceType === "aegiswear" ? "AegisWear offline" : "Eldora Core offline";
+  const fallbackTitle = deviceType === "dorashield" ? "DoraShield offline" : "DoraBot offline";
 
   await updateDevice(device.id, {
     isOnline: false,

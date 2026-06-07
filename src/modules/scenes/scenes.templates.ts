@@ -4,20 +4,20 @@ export const SCENE_TEMPLATES = [
   {
     id: "scheduled_check_in",
     title: "Scheduled check-in",
-    description: "At a chosen time, Core asks whether the elder is okay.",
+    description: "At a chosen time, DoraBot asks whether the elder is okay.",
     category: "care",
     devices: [
-      { name: "Eldora Core", role: "speaks the check-in" },
+      { name: "DoraBot", role: "speaks the check-in" },
     ],
     ifLabel: "The schedule reaches the selected check-in time.",
-    thenLabel: "Eldora Core asks the elder a calm wellness question.",
+    thenLabel: "DoraBot asks the elder a calm wellness question.",
     setupNote: "Good for daily reassurance without opening a full call.",
     triggerType: SceneTriggerType.schedule,
     triggerConfig: {
       schemaVersion: 1,
       condition: {
         kind: "schedule",
-        deviceType: "eldora_core",
+        deviceType: "dorabot",
         schedule: { frequency: "daily", time: "09:00" },
       },
     },
@@ -25,8 +25,8 @@ export const SCENE_TEMPLATES = [
       schemaVersion: 1,
       steps: [
         {
-          type: "core_voice_check_in",
-          target: "eldora_core",
+          type: "dorabot_voice_check_in",
+          target: "dorabot",
           message: "Good morning. Are you feeling okay today? Please answer Eldora so your family knows you are safe.",
         },
       ],
@@ -35,18 +35,18 @@ export const SCENE_TEMPLATES = [
   {
     id: "fall_response",
     title: "Fall response",
-    description: "AegisWear detects a fall and sends a critical phone alert.",
+    description: "DoraShield detects a fall and sends a critical phone alert.",
     category: "safety",
     devices: [
-      { name: "AegisWear", role: "detects the fall" },
+      { name: "DoraShield", role: "detects the fall" },
     ],
-    ifLabel: "AegisWear detects a fall event.",
+    ifLabel: "DoraShield detects a fall event.",
     thenLabel: "Family receives a critical FCM alert and the event appears in Message Center.",
-    setupNote: "Use after AegisWear is paired for fall detection.",
+    setupNote: "Use after DoraShield is paired for fall detection.",
     triggerType: SceneTriggerType.device_status_changes,
     triggerConfig: {
       schemaVersion: 1,
-      condition: { kind: "fall_detected", deviceType: "aegiswear" },
+      condition: { kind: "fall_detected", deviceType: "dorashield" },
     },
     actions: {
       schemaVersion: 1,
@@ -56,7 +56,7 @@ export const SCENE_TEMPLATES = [
           target: "caregiver",
           notificationType: "alarm",
           title: "Fall detected",
-          body: "AegisWear detected a fall. Check immediately.",
+          body: "DoraShield detected a fall. Check immediately.",
           severity: "critical",
           sound: "critical_alert",
         },
@@ -64,56 +64,22 @@ export const SCENE_TEMPLATES = [
     },
   },
   {
-    id: "core_offline",
-    title: "Core offline",
-    description: "Family is notified when Eldora Core has been offline too long.",
-    category: "device",
-    devices: [
-      { name: "Eldora Core", role: "monitored for connection" },
-    ],
-    ifLabel: "Eldora Core is offline for 10 minutes.",
-    thenLabel: "Send a device offline notification to family.",
-    setupNote: "Useful when Core is moved, powered off, or Wi-Fi changes.",
-    triggerType: SceneTriggerType.device_status_changes,
-    triggerConfig: {
-      schemaVersion: 1,
-      condition: {
-        kind: "device_offline",
-        deviceType: "eldora_core",
-        durationMinutes: 10,
-      },
-    },
-    actions: {
-      schemaVersion: 1,
-      steps: [
-        {
-          type: "send_push_alert",
-          target: "caregiver",
-          notificationType: "device",
-          title: "Eldora Core offline",
-          body: "Eldora Core has been offline for 10 minutes.",
-          severity: "warning",
-        },
-      ],
-    },
-  },
-  {
     id: "medication_reminder",
     title: "Medication reminder",
-    description: "Schedule Core to speak a daily medicine reminder.",
+    description: "Schedule DoraBot to speak a daily medicine reminder.",
     category: "care",
     devices: [
-      { name: "Eldora Core", role: "speaks the reminder" },
+      { name: "DoraBot", role: "speaks the reminder" },
     ],
     ifLabel: "It is 07:00 every morning.",
-    thenLabel: "Eldora Core speaks the reminder and asks for confirmation.",
+    thenLabel: "DoraBot speaks the reminder and asks for confirmation.",
     setupNote: "For daily care routines managed by family.",
     triggerType: SceneTriggerType.schedule,
     triggerConfig: {
       schemaVersion: 1,
       condition: {
         kind: "schedule",
-        deviceType: "eldora_core",
+        deviceType: "dorabot",
         schedule: { frequency: "daily", time: "07:00" },
       },
     },
@@ -121,8 +87,8 @@ export const SCENE_TEMPLATES = [
       schemaVersion: 1,
       steps: [
         {
-          type: "speak_on_core",
-          target: "eldora_core",
+          type: "speak_on_dorabot",
+          target: "dorabot",
           message: "It is time for your morning medicine. Please tell Eldora after you take it.",
         },
         {

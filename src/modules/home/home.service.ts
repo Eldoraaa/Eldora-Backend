@@ -96,7 +96,10 @@ export async function getSafetySummary(userId: string, homeId?: string | null) {
   const contacts = scopedContacts.length > 0 || !homeId ? scopedContacts : await findEmergencyContacts(userId, null);
   const openAlert = openAlerts[0] ?? null;
   const primaryDevice =
-    devices.find((device) => `${device.name ?? ""} ${device.deviceId}`.toLowerCase().includes("aegis")) ??
+    devices.find((device) => {
+      const name = `${device.name ?? ""} ${device.deviceId}`.toLowerCase();
+      return name.includes("dorashield") || name.includes("shield") || name.includes("vest");
+    }) ??
     devices[0] ??
     null;
   const deviceFlags = deviceRiskFlags(devices);

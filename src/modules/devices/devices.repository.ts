@@ -45,7 +45,7 @@ export function createUnclaimedDevice(deviceKey: string) {
     data: {
       deviceId: deviceKey,
       deviceKey,
-      name: "Eldora Core",
+      name: "DoraBot",
       elderProfile: {
         create: {
           name: "Eldora User",

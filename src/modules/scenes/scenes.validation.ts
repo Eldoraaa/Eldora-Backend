@@ -21,7 +21,7 @@ const sceneConditionSchema = z
       "device_offline",
       "schedule",
     ]),
-    deviceType: z.enum(["eldora_core", "aegiswear", "any"]).optional(),
+    deviceType: z.enum(["dorabot", "dorashield", "any"]).optional(),
     durationMinutes: z.number().int().min(1).max(1440).optional(),
     activeHoursOnly: z.boolean().optional(),
     schedule: z
@@ -36,8 +36,8 @@ const sceneConditionSchema = z
 
 const deviceBindingsSchema = z
   .object({
-    eldora_core: z.string().trim().min(1).optional(),
-    aegiswear: z.string().trim().min(1).optional(),
+    dorabot: z.string().trim().min(1).optional(),
+    dorashield: z.string().trim().min(1).optional(),
     caregiver_app: z.string().trim().min(1).optional(),
   })
   .partial();
@@ -57,11 +57,11 @@ const sceneActionSchema = z
       "send_push_alert",
       "send_push_alert_if_no_response",
       "activate_local_alarm",
-      "core_voice_check_in",
+      "dorabot_voice_check_in",
       "show_call_elder_action",
-      "speak_on_core",
+      "speak_on_dorabot",
     ]),
-    target: z.enum(["caregiver", "eldora_core", "aegiswear"]).optional(),
+    target: z.enum(["caregiver", "dorabot", "dorashield"]).optional(),
     message: z.string().trim().max(240).optional(),
     delayMinutes: z.number().int().min(1).max(1440).optional(),
     notificationType: z.enum(["alarm", "home", "device"]).optional(),

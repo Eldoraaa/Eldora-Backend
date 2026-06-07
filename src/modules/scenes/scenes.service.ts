@@ -169,10 +169,10 @@ export async function executeSceneActions(
       }
 
       const targetDeviceId =
-        step.target === "aegiswear"
-          ? asString(bindings.aegiswear) ?? fallbackDeviceId
-          : step.target === "eldora_core"
-            ? asString(bindings.eldora_core) ?? fallbackDeviceId
+        step.target === "dorashield"
+          ? asString(bindings.dorashield) ?? fallbackDeviceId
+          : step.target === "dorabot"
+            ? asString(bindings.dorabot) ?? fallbackDeviceId
             : undefined;
 
       if (!targetDeviceId) return;
@@ -183,8 +183,8 @@ export async function executeSceneActions(
           sceneId: scene.id,
         });
       }
-      if (type === "speak_on_core" || type === "core_voice_check_in") {
-        await createDeviceCommand(targetDeviceId, DeviceCommandType.speak_on_core, {
+      if (type === "speak_on_dorabot" || type === "dorabot_voice_check_in") {
+        await createDeviceCommand(targetDeviceId, DeviceCommandType.speak_on_dorabot, {
           source: "scene",
           sceneId: scene.id,
           message: asString(step.message) ?? "Your family is checking in. Are you feeling okay?",

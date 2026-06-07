@@ -87,7 +87,7 @@ function detectIntent(transcript: string, sttConfidence?: number): IntentResult 
       notification: {
         type: "alarm",
         title: "Fall help requested",
-        body: "Eldora Core heard a fall-related help request.",
+        body: "DoraBot heard a fall-related help request.",
         severity: "critical",
         eventType: "voice_fall_emergency",
       },
@@ -103,7 +103,7 @@ function detectIntent(transcript: string, sttConfidence?: number): IntentResult 
       notification: {
         type: "alarm",
         title: "Caregiver call requested",
-        body: "The elder asked Eldora Core to contact a caregiver.",
+        body: "The elder asked DoraBot to contact a caregiver.",
         severity: "critical",
         eventType: "voice_call_caregiver",
       },
@@ -119,7 +119,7 @@ function detectIntent(transcript: string, sttConfidence?: number): IntentResult 
       notification: {
         type: "alarm",
         title: "Help requested",
-        body: "The elder asked Eldora Core for urgent help.",
+        body: "The elder asked DoraBot for urgent help.",
         severity: "critical",
         eventType: "voice_emergency_help",
       },
@@ -190,7 +190,7 @@ export async function processVoiceText(input: ProcessVoiceTextInput) {
 
   if (result.ignored) {
     if (device && result.responseText) {
-      await createDeviceCommand(device.id, DeviceCommandType.speak_on_core, {
+      await createDeviceCommand(device.id, DeviceCommandType.speak_on_dorabot, {
         source: "voice",
         intent: result.intent,
         message: result.responseText,
@@ -209,7 +209,7 @@ export async function processVoiceText(input: ProcessVoiceTextInput) {
   }
 
   if (device && result.responseText) {
-    await createDeviceCommand(device.id, DeviceCommandType.speak_on_core, {
+    await createDeviceCommand(device.id, DeviceCommandType.speak_on_dorabot, {
       source: "voice",
       intent: result.intent,
       message: result.responseText,
@@ -243,7 +243,7 @@ export async function processVoiceText(input: ProcessVoiceTextInput) {
   }
 
   if (!device && result.notification) {
-    throw new AppError("A paired Eldora Core device is required for voice alerts", 400);
+    throw new AppError("A paired DoraBot device is required for voice alerts", 400);
   }
 
   return {
@@ -252,7 +252,7 @@ export async function processVoiceText(input: ProcessVoiceTextInput) {
     intent: result.intent,
     confidence: result.confidence,
     responseText: result.responseText ?? null,
-    action: result.notification ? "caregiver_notified" : "core_response_queued",
+    action: result.notification ? "caregiver_notified" : "dorabot_response_queued",
   };
 }
 

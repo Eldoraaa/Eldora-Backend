@@ -57,7 +57,7 @@ function buildDeviceResponse(device: DeviceWithProfile) {
   return {
     id: device.id,
     deviceId: device.deviceId,
-    name: device.name ?? "Eldora Core",
+    name: device.name ?? "DoraBot",
     elderName: elderProfile?.name ?? "Elder profile",
     isOnline,
     lastSeen: device.lastSeen,

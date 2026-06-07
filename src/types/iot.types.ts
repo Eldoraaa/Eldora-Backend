@@ -10,4 +10,4 @@ export type DeviceTelemetry = {
 
 export type DeviceCommandStatus = "pending" | "delivered" | "applied" | "failed";
 
-export type DeviceCommandType = "configure_wifi" | "activate_local_alarm" | "speak_on_core";
+export type DeviceCommandType = "configure_wifi" | "activate_local_alarm" | "speak_on_dorabot";
