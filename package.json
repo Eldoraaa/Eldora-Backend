@@ -12,8 +12,6 @@
     "build": "tsc",
     "postbuild": "tsc-alias",
     "start": "node dist/src/index.js",
-    "voice:install": "python -m pip install -r voice-service/requirements.txt",
-    "voice:dev": "cd voice-service && python -m uvicorn app:app --host 0.0.0.0 --port 8000",
     "seed": "ts-node --files -r tsconfig-paths/register prisma/seed.ts"
   },
   "keywords": [],

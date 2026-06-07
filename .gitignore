@@ -3,7 +3,3 @@ dist
 .env
 /generated/prisma
 firebase-service-account.json
-voice-service/.venv
-voice-service/audio_cache
-voice-service/__pycache__
-voice-service/.pytest_cache

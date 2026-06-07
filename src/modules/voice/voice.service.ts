@@ -282,6 +282,16 @@ export async function processDeviceVoiceAudio(audio: Buffer, deviceId: string) {
     audio_url?: string | null;
     audioUrl?: string | null;
     text?: string;
+    response_source?: string;
+    responseSource?: string;
+    latency?: {
+      audio_ms?: number;
+      stt_ms?: number;
+      ai_ms?: number;
+      tts_ms?: number;
+      total_ms?: number;
+    };
+    latency_ms?: number;
   };
   const audioUrl = result.audio_url ?? result.audioUrl ?? null;
   const absoluteAudioUrl = audioUrl && audioUrl.startsWith("/") && config.voiceAudioBaseUrl
@@ -296,5 +306,8 @@ export async function processDeviceVoiceAudio(audio: Buffer, deviceId: string) {
     message: result.message ?? null,
     transcript: result.text ?? null,
     audioUrl: absoluteAudioUrl,
+    responseSource: result.responseSource ?? result.response_source ?? null,
+    latency: result.latency ?? null,
+    latencyMs: result.latency_ms ?? result.latency?.total_ms ?? null,
   };
 }
