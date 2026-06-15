@@ -44,7 +44,9 @@ export async function getWellnessSummaryController(
   res: Response
 ): Promise<void> {
   const homeId = typeof req.query.homeId === "string" ? req.query.homeId : undefined;
-  const summary = await getWellnessSummary(req.user!.id, homeId);
+  const startDate = typeof req.query.startDate === "string" ? new Date(req.query.startDate) : undefined;
+  const endDate = typeof req.query.endDate === "string" ? new Date(req.query.endDate) : undefined;
+  const summary = await getWellnessSummary(req.user!.id, homeId, startDate, endDate);
   sendSuccess(res, summary);
 }
 

@@ -31,9 +31,9 @@ export function findRecentVoiceEmotionLogs(deviceId: string, limit = 20) {
   });
 }
 
-export function findVoiceEmotionLogsByDevice(deviceId: string, since: Date) {
+export function findVoiceEmotionLogsByDevice(deviceId: string, since: Date, until?: Date) {
   return prisma.trVoiceEmotionLog.findMany({
-    where: { deviceId, createdAt: { gte: since } },
+    where: { deviceId, createdAt: { gte: since, ...(until ? { lte: until } : {}) } },
     orderBy: { createdAt: "asc" },
     select: {
       emotionState: true,

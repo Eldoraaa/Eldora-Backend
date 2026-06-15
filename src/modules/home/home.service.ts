@@ -154,16 +154,21 @@ export async function getSafetySummary(userId: string, homeId?: string | null) {
   };
 }
 
-export async function getWellnessSummary(userId: string, homeId?: string | null) {
+export async function getWellnessSummary(userId: string, homeId?: string | null, startDate?: Date, endDate?: Date) {
   const user = await findUserHomeSummary(userId);
   const devices = buildSummaryDevices(user).filter((device) => !homeId || device.roomCategory?.homeId === homeId);
-  const notifications = (await findRecentUserNotifications(userId, 25)).filter((notification) => !homeId || notification.homeId === homeId);
+  const since = startDate ?? new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const until = endDate;
+  const allNotifications = (await findRecentUserNotifications(userId, 100)).filter((notification) => !homeId || notification.homeId === homeId);
+  const notifications = allNotifications.filter((n) => {
+    const t = new Date(n.createdAt).getTime();
+    return t >= since.getTime() && (!until || t <= until.getTime());
+  });
   const openAlerts = await findOpenAlarmNotifications(userId, homeId);
   const deviceFlags = deviceRiskFlags(devices);
 
-  const since7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const emotionLogs = (
-    await Promise.all(devices.map((d) => findVoiceEmotionLogsByDevice(d.id, since7d)))
+    await Promise.all(devices.map((d) => findVoiceEmotionLogsByDevice(d.id, since, until)))
   ).flat();
 
   const criticalCount = notifications.filter((notification) => notificationSeverity(notification) === "critical").length;
@@ -208,12 +213,14 @@ export async function getWellnessSummary(userId: string, homeId?: string | null)
     ...(followUpCount > 0 ? [`${followUpCount} unresolved follow-up alert(s)`] : []),
     ...(deviceFlags.offlineCount > 0 ? [`${deviceFlags.offlineCount} offline device(s)`] : []),
     ...(deviceFlags.lowBatteryCount > 0 ? [`${deviceFlags.lowBatteryCount} low-battery device(s)`] : []),
-    ...(distressedVoiceCount > 0 ? [`${distressedVoiceCount} distressed voice moment(s) in the last 7 days`] : []),
-    ...(anxiousVoiceCount > 0 ? [`${anxiousVoiceCount} anxious voice moment(s) in the last 7 days`] : []),
+    ...(distressedVoiceCount > 0 ? [`${distressedVoiceCount} distressed voice moment(s) detected`] : []),
+    ...(anxiousVoiceCount > 0 ? [`${anxiousVoiceCount} anxious voice moment(s) detected`] : []),
   ];
 
+  const periodDays = Math.round((((until ?? new Date()).getTime()) - since.getTime()) / (24 * 60 * 60 * 1000));
+
   return {
-    period: "recent_activity",
+    period: `last_${periodDays}_days`,
     moodTrend,
     distressLevel,
     distressScore,
