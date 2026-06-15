@@ -2,6 +2,7 @@ import { Router } from "express";
 import { authenticate } from "@/middlewares";
 import {
   approvePairingRequest,
+  deleteDevice,
   getDevices,
   getPairingRequests,
   pairDevice,
@@ -221,6 +222,7 @@ router.post("/pairing-requests/:id/reject", authenticate, rejectPairingRequest);
  *         $ref: '#/components/responses/NotFound'
  */
 router.post("/:id/wifi", authenticate, queueWifiConfig);
+router.delete("/:id", authenticate, deleteDevice);
 router.get("/:id/voice-config", authenticate, getDeviceVoiceConfig);
 router.put("/:id/voice-config", authenticate, updateDeviceVoiceConfigController);
 router.get("/:id/voice-test-audio", authenticate, testDeviceVoiceAudio);

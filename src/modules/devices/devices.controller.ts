@@ -14,6 +14,7 @@ import {
   pairLocalDevice as pairLocalDeviceService,
   queueWifiConfig as queueWifiConfigService,
   rejectPairingRequest as rejectPairingRequestService,
+  removeDevice as removeDeviceService,
   updateDeviceManagement as updateDeviceManagementService,
 } from "./devices.service";
 
@@ -74,4 +75,9 @@ export async function updateDeviceManagement(
   const body = deviceManagementSchema.parse(req.body);
   const devices = await updateDeviceManagementService(req.user!.id, body);
   sendSuccess(res, devices, "Device management updated");
+}
+
+export async function deleteDevice(req: Request, res: Response): Promise<void> {
+  await removeDeviceService(req.user!.id, String(req.params.id));
+  sendSuccess(res, null, "Device removed");
 }

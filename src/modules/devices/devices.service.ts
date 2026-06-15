@@ -7,6 +7,7 @@ import {
   approvePairingRequest as approvePairingRequestInRepository,
   createPairingRequest,
   createWifiCommand,
+  deleteDevice,
   expirePendingPairingRequests,
   findDeviceById,
   findDeviceByKey,
@@ -366,4 +367,10 @@ export async function updateDeviceManagement(
 
   const updatedDevices = await updateDeviceManagementState(body.devices);
   return updatedDevices.map(buildDeviceResponse);
+}
+
+export async function removeDevice(userId: string, deviceId: string) {
+  const device = await findUserDevice(userId, deviceId);
+  if (!device) throw new AppError("Device not found", 404);
+  await deleteDevice(deviceId);
 }

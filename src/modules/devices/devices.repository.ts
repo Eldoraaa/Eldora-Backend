@@ -72,6 +72,10 @@ export function findDeviceById(deviceId: string) {
   });
 }
 
+export function deleteDevice(deviceId: string) {
+  return prisma.msDevice.delete({ where: { id: deviceId } });
+}
+
 export function updateElderProfile(
   elderProfileId: string,
   data: Prisma.MsElderProfileUpdateInput
