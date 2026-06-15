@@ -62,6 +62,15 @@ enum NotificationType {
   device
 }
 
+enum VoiceEmotionState {
+  neutral
+  calm
+  happy
+  sad
+  anxious
+  distressed
+}
+
 // Models
 
 model MsUser {
@@ -260,6 +269,8 @@ model MsDevice {
   commands        TrDeviceCommand[]
   pairingRequests TrDevicePairingRequest[]
   notifications   TrNotification[]
+  voiceEmotionLogs TrVoiceEmotionLog[]
+  voiceConfig     MsDeviceVoiceConfig?
 
   @@index([sortOrder])
   @@index([roomCategoryId])
@@ -343,6 +354,39 @@ model MsScene {
   @@index([homeId, triggerType, sortOrder])
   @@index([roomCategoryId])
   @@map("MsScene")
+}
+
+model MsDeviceVoiceConfig {
+  id        String   @id @default(cuid())
+  enabled   Boolean  @default(true)
+  language  String   @default("en")
+  ttsVoice  String   @default("en-US-JennyNeural")
+  ttsRate   String   @default("-5%")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  deviceId String   @unique
+  device   MsDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@map("MsDeviceVoiceConfig")
+}
+
+model TrVoiceEmotionLog {
+  id             String            @id @default(cuid())
+  emotionState   VoiceEmotionState @default(neutral)
+  confidence     Float             @default(0)
+  transcript     String?
+  intent         String?
+  responseSource String?
+  latencyMs      Float?
+  createdAt      DateTime          @default(now())
+
+  deviceId String
+  device   MsDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([deviceId, createdAt])
+  @@index([emotionState, createdAt])
+  @@map("TrVoiceEmotionLog")
 }
 
 model TrNotificationResponse {

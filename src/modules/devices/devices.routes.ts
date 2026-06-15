@@ -16,6 +16,11 @@ import {
   listRoomCategories,
   updateRoomCategories,
 } from "./rooms.controller";
+import {
+  getDeviceVoiceConfig,
+  updateDeviceVoiceConfigController,
+  testDeviceVoiceAudio,
+} from "./voice-config.controller";
 
 const router = Router();
 
@@ -216,5 +221,8 @@ router.post("/pairing-requests/:id/reject", authenticate, rejectPairingRequest);
  *         $ref: '#/components/responses/NotFound'
  */
 router.post("/:id/wifi", authenticate, queueWifiConfig);
+router.get("/:id/voice-config", authenticate, getDeviceVoiceConfig);
+router.put("/:id/voice-config", authenticate, updateDeviceVoiceConfigController);
+router.get("/:id/voice-test-audio", authenticate, testDeviceVoiceAudio);
 
 export default router;

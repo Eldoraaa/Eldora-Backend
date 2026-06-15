@@ -13,6 +13,7 @@ import notificationRoutes from "@/modules/notifications";
 import { processAllDueFollowUps } from "@/modules/notifications/notifications.service";
 import sceneRoutes from "@/modules/scenes";
 import voiceRoutes from "@/modules/voice";
+import { analyticsRouter as analyticsRoutes } from "@/modules/analytics";
 import { processDueScheduledScenes } from "@/modules/scenes/scenes.service";
 
 const app = express();
@@ -62,6 +63,7 @@ app.use("/devices", devicesRoutes);
 app.use("/notifications", notificationRoutes);
 app.use("/scenes", sceneRoutes);
 app.use("/voice", voiceRoutes);
+app.use("/analytics", analyticsRoutes);
 
 // 404
 app.use((_req, res) => {

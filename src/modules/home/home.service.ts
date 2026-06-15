@@ -1,6 +1,7 @@
 import { AppError } from "@/shared/errors";
 import { randomBytes } from "crypto";
 import type { HomeMemberRole } from "../../../generated/prisma/client";
+import { findVoiceEmotionLogsByDevice } from "@/modules/voice/voice.repository";
 import {
   acceptHomeInvitation,
   clearPrimaryEmergencyContacts,
@@ -159,6 +160,12 @@ export async function getWellnessSummary(userId: string, homeId?: string | null)
   const notifications = (await findRecentUserNotifications(userId, 25)).filter((notification) => !homeId || notification.homeId === homeId);
   const openAlerts = await findOpenAlarmNotifications(userId, homeId);
   const deviceFlags = deviceRiskFlags(devices);
+
+  const since7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const emotionLogs = (
+    await Promise.all(devices.map((d) => findVoiceEmotionLogsByDevice(d.id, since7d)))
+  ).flat();
+
   const criticalCount = notifications.filter((notification) => notificationSeverity(notification) === "critical").length;
   const fallCount = notifications.filter((notification) => notificationEventType(notification) === "fall_detected").length;
   const sosCount = notifications.filter((notification) => notificationEventType(notification) === "sos").length;
@@ -167,23 +174,42 @@ export async function getWellnessSummary(userId: string, homeId?: string | null)
     const responses = "responses" in notification && Array.isArray(notification.responses) ? notification.responses.length : 0;
     return total + responses;
   }, 0);
+
+  const distressedVoiceCount = emotionLogs.filter((e) => e.emotionState === "distressed").length;
+  const anxiousVoiceCount = emotionLogs.filter((e) => e.emotionState === "anxious").length;
+  const sadVoiceCount = emotionLogs.filter((e) => e.emotionState === "sad").length;
+  const positiveVoiceCount = emotionLogs.filter((e) => e.emotionState === "happy" || e.emotionState === "calm").length;
+
+  const voiceEmotionScore = Math.min(50, distressedVoiceCount * 10 + anxiousVoiceCount * 6 + sadVoiceCount * 4);
   const distressScore = Math.min(
     100,
-    criticalCount * 25 + openAlerts.length * 30 + followUpCount * 18 + deviceFlags.offlineCount * 12 + deviceFlags.lowBatteryCount * 8
+    criticalCount * 25 + openAlerts.length * 30 + followUpCount * 18 +
+    deviceFlags.offlineCount * 12 + deviceFlags.lowBatteryCount * 8 +
+    voiceEmotionScore
   );
   const distressLevel = distressScore >= 70 ? "high" : distressScore >= 35 ? "medium" : "low";
   const moodTrend = distressLevel === "high" ? "distressed" : distressLevel === "medium" ? "needs_attention" : "stable";
+
   const interactionSummary = responseCount > 0
     ? `${responseCount} caregiver response(s) recorded across recent Eldora alerts.`
     : notifications.length > 0
       ? "Recent alerts were recorded, but caregiver response activity is still limited."
       : "No recent alert or interaction activity recorded.";
+
+  const dominantEmotion = distressedVoiceCount > 0 ? "distressed"
+    : anxiousVoiceCount > 0 ? "anxious"
+    : sadVoiceCount > 0 ? "sad"
+    : positiveVoiceCount > 0 ? "positive"
+    : null;
+
   const careSignals = [
     ...(fallCount > 0 ? [`${fallCount} fall alert(s)`] : []),
     ...(sosCount > 0 ? [`${sosCount} SOS request(s)`] : []),
     ...(followUpCount > 0 ? [`${followUpCount} unresolved follow-up alert(s)`] : []),
     ...(deviceFlags.offlineCount > 0 ? [`${deviceFlags.offlineCount} offline device(s)`] : []),
     ...(deviceFlags.lowBatteryCount > 0 ? [`${deviceFlags.lowBatteryCount} low-battery device(s)`] : []),
+    ...(distressedVoiceCount > 0 ? [`${distressedVoiceCount} distressed voice moment(s) in the last 7 days`] : []),
+    ...(anxiousVoiceCount > 0 ? [`${anxiousVoiceCount} anxious voice moment(s) in the last 7 days`] : []),
   ];
 
   return {
@@ -193,11 +219,24 @@ export async function getWellnessSummary(userId: string, homeId?: string | null)
     distressScore,
     interactionSummary,
     careSignals,
+    voiceEmotionSummary: {
+      totalInteractions: emotionLogs.length,
+      dominantEmotion,
+      breakdown: {
+        distressed: distressedVoiceCount,
+        anxious: anxiousVoiceCount,
+        sad: sadVoiceCount,
+        positive: positiveVoiceCount,
+        neutral: emotionLogs.filter((e) => e.emotionState === "neutral").length,
+      },
+    },
     recommendation: openAlerts.length > 0
       ? "Prioritize resolving open alerts and confirming the elder is safe."
-      : distressLevel === "medium"
-        ? "Check in with the elder and review device reliability."
-        : "Wellness signals look stable based on available Eldora activity.",
+      : distressedVoiceCount >= 3
+        ? "Elder has shown signs of distress in voice interactions. Consider checking in soon."
+        : distressLevel === "medium"
+          ? "Check in with the elder and review device reliability."
+          : "Wellness signals look stable based on available Eldora activity.",
     generatedAt: new Date().toISOString(),
   };
 }

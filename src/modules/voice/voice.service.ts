@@ -1,9 +1,11 @@
 import { config } from "@/config";
 import { createDeviceCommand } from "@/modules/iot/iot.repository";
 import { createUserNotification } from "@/modules/notifications/notifications.service";
-import { findDeviceById } from "@/modules/devices/devices.repository";
+import { findDeviceById, findDevicesByUser } from "@/modules/devices/devices.repository";
+import { findOrCreateDeviceVoiceConfig } from "@/modules/devices/voice-config.repository";
 import { AppError } from "@/shared/errors";
-import { DeviceCommandType } from "../../../generated/prisma/client";
+import { DeviceCommandType, VoiceEmotionState } from "../../../generated/prisma/client";
+import { createVoiceEmotionLog } from "./voice.repository";
 import type { ProcessVoiceTextInput } from "./voice.validation";
 
 type VoiceIntent =
@@ -256,6 +258,20 @@ export async function processVoiceText(input: ProcessVoiceTextInput) {
   };
 }
 
+export async function testSpeakOnDevice(userId: string) {
+  const devices = await findDevicesByUser(userId);
+  const device = devices[0] ?? null;
+  if (!device) {
+    throw new AppError("No DoraBot device found for this account", 404);
+  }
+  const testMessage = "Hello! I am Eldora, your voice companion. I am here whenever you need me.";
+  await createDeviceCommand(device.id, DeviceCommandType.speak_on_dorabot, {
+    source: "test",
+    message: testMessage,
+  });
+  return { deviceId: device.id, message: testMessage };
+}
+
 export async function processDeviceVoiceAudio(audio: Buffer, deviceId: string) {
   if (!config.voiceAudioProcessorUrl) {
     throw new AppError("Voice audio processor is not configured", 501);
@@ -265,10 +281,16 @@ export async function processDeviceVoiceAudio(audio: Buffer, deviceId: string) {
     throw new AppError("Audio stream is too short", 400);
   }
 
+  const voiceCfg = await findOrCreateDeviceVoiceConfig(deviceId);
+
   const response = await fetch(config.voiceAudioProcessorUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/octet-stream",
+      "X-Voice-Enabled": String(voiceCfg.enabled),
+      "X-Voice-Language": voiceCfg.language,
+      "X-Voice-TTS-Voice": voiceCfg.ttsVoice,
+      "X-Voice-Rate": voiceCfg.ttsRate,
     },
     body: audio,
   });
@@ -284,6 +306,7 @@ export async function processDeviceVoiceAudio(audio: Buffer, deviceId: string) {
     text?: string;
     response_source?: string;
     responseSource?: string;
+    emotion?: { state?: string; confidence?: number };
     latency?: {
       audio_ms?: number;
       stt_ms?: number;
@@ -293,20 +316,38 @@ export async function processDeviceVoiceAudio(audio: Buffer, deviceId: string) {
     };
     latency_ms?: number;
   };
+
   const audioUrl = result.audio_url ?? result.audioUrl ?? null;
   const absoluteAudioUrl = audioUrl && audioUrl.startsWith("/") && config.voiceAudioBaseUrl
     ? `${config.voiceAudioBaseUrl}${audioUrl}`
     : audioUrl;
 
-  if (result.text) {
-    await processVoiceText({ transcript: result.text, deviceId });
-  }
+  // Layer 2 (intent) + Layer 3 (emotion save) run in parallel
+  const intentResult = result.text
+    ? await processVoiceText({ transcript: result.text, deviceId })
+    : null;
+
+  const rawEmotion = result.emotion?.state ?? "neutral";
+  const emotionState = Object.values(VoiceEmotionState).includes(rawEmotion as VoiceEmotionState)
+    ? (rawEmotion as VoiceEmotionState)
+    : VoiceEmotionState.neutral;
+
+  void createVoiceEmotionLog({
+    deviceId,
+    emotionState,
+    confidence: result.emotion?.confidence ?? 0,
+    transcript: result.text ?? null,
+    intent: intentResult && !intentResult.ignored ? intentResult.intent : null,
+    responseSource: result.responseSource ?? result.response_source ?? null,
+    latencyMs: result.latency_ms ?? result.latency?.total_ms ?? null,
+  }).catch((err) => console.warn("[Voice] Failed to save emotion log:", err));
 
   return {
     message: result.message ?? null,
     transcript: result.text ?? null,
     audioUrl: absoluteAudioUrl,
     responseSource: result.responseSource ?? result.response_source ?? null,
+    emotion: { state: emotionState, confidence: result.emotion?.confidence ?? 0 },
     latency: result.latency ?? null,
     latencyMs: result.latency_ms ?? result.latency?.total_ms ?? null,
   };
