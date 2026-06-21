@@ -35,6 +35,7 @@ export const respondNotificationSchema = z.object({
 
 export const listNotificationsSchema = z.object({
   type: notificationTypeSchema.optional(),
+  homeId: z.string().trim().min(1).nullable().optional(),
   limit: z.coerce.number().int().min(1).max(100).optional(),
 });
 

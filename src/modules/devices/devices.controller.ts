@@ -18,8 +18,13 @@ import {
   updateDeviceManagement as updateDeviceManagementService,
 } from "./devices.service";
 
+function getHomeId(req: Request) {
+  const homeId = req.query.homeId;
+  return typeof homeId === "string" && homeId.trim() ? homeId.trim() : null;
+}
+
 export async function getDevices(req: Request, res: Response): Promise<void> {
-  const devices = await getUserDevices(req.user!.id);
+  const devices = await getUserDevices(req.user!.id, getHomeId(req));
   sendSuccess(res, devices);
 }
 
@@ -39,7 +44,7 @@ export async function getPairingRequests(
   req: Request,
   res: Response
 ): Promise<void> {
-  const requests = await getPairingRequestsService(req.user!.id);
+  const requests = await getPairingRequestsService(req.user!.id, getHomeId(req));
   sendSuccess(res, requests);
 }
 

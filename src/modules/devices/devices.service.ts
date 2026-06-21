@@ -25,7 +25,7 @@ import {
   type DeviceWithProfile,
   type PairingRequestWithDevice,
 } from "./devices.repository";
-import { findFirstUserHome } from "@/modules/home/home.repository";
+import { findFirstUserHome, findUserHomeById } from "@/modules/home/home.repository";
 import { findRoomCategories } from "./rooms.repository";
 import { createUserNotification } from "@/modules/notifications/notifications.service";
 
@@ -44,7 +44,38 @@ type LocalPairDeviceInput = {
   wifiSsid?: string;
   wifiRssi?: number;
   firmwareVersion?: string;
+  homeId?: string | null;
 };
+
+type PairDeviceInput = {
+  deviceKey: string;
+  elderName?: string;
+  deviceName?: string;
+  homeId?: string | null;
+};
+
+async function resolveUserHome(userId: string, homeId?: string | null) {
+  if (homeId) {
+    const home = await findUserHomeById(userId, homeId);
+    if (!home) throw new AppError("Home not found", 404);
+    return home;
+  }
+
+  const home = await findFirstUserHome(userId);
+  if (!home) throw new AppError("Home not found", 404);
+  return home;
+}
+
+async function firstRoomForHome(homeId: string) {
+  const rooms = await findRoomCategories(homeId);
+  return rooms[0] ?? null;
+}
+
+async function defaultRoomUpdateForHome(userId: string, homeId?: string | null) {
+  const home = await resolveUserHome(userId, homeId);
+  const room = await firstRoomForHome(home.id);
+  return room ? { roomCategory: { connect: { id: room.id } } } : {};
+}
 
 function isRecentlySeen(lastSeen: Date | null): boolean {
   if (!lastSeen) return false;
@@ -114,14 +145,14 @@ function buildLocalPairingDeviceData(body: LocalPairDeviceInput, now: Date) {
   };
 }
 
-export async function getUserDevices(userId: string) {
-  const devices = await findDevicesByUser(userId);
+export async function getUserDevices(userId: string, homeId?: string | null) {
+  const devices = await findDevicesByUser(userId, homeId);
   return devices.map(buildDeviceResponse);
 }
 
 export async function pairDevice(
   userId: string,
-  body: { deviceKey: string; elderName?: string; deviceName?: string }
+  body: PairDeviceInput
 ) {
   const deviceKey = body.deviceKey.trim();
   const device = await findDeviceByKey(deviceKey);
@@ -149,9 +180,11 @@ export async function pairDevice(
     await linkElderProfileUser(device.elderProfileId, userId);
   }
 
-  const updatedDevice = body.deviceName
-    ? await updateDevice(device.id, { name: body.deviceName })
-    : await findDeviceById(device.id);
+  const roomUpdate = await defaultRoomUpdateForHome(userId, body.homeId);
+  const updatedDevice = await updateDevice(device.id, {
+    ...(body.deviceName && { name: body.deviceName }),
+    ...roomUpdate,
+  });
 
   return {
     data: buildDeviceResponse(updatedDevice),
@@ -192,8 +225,10 @@ export async function pairLocalDevice(userId: string, body: LocalPairDeviceInput
 
   if (!hasOwner) {
     const now = new Date();
+    const roomUpdate = await defaultRoomUpdateForHome(userId, body.homeId);
     const updatedDevice = await updateDevice(device.id, {
       ...buildLocalPairingDeviceData(body, now),
+      ...roomUpdate,
       ...(body.elderName && {
         elderProfile: { update: { name: body.elderName } },
       }),
@@ -209,8 +244,10 @@ export async function pairLocalDevice(userId: string, body: LocalPairDeviceInput
 
   if (alreadyLinked) {
     const now = new Date();
+    const roomUpdate = await defaultRoomUpdateForHome(userId, body.homeId);
     const updatedDevice = await updateDevice(device.id, {
       ...buildLocalPairingDeviceData(body, now),
+      ...roomUpdate,
       ...(body.elderName && {
         elderProfile: { update: { name: body.elderName } },
       }),
@@ -246,7 +283,8 @@ export async function pairLocalDevice(userId: string, body: LocalPairDeviceInput
 
     await Promise.all(
       ownerIds.map(async (ownerId) => {
-        const ownerHome = await findFirstUserHome(ownerId);
+        const ownerHomeId = request.device.roomCategory?.homeId ?? null;
+        const ownerHome = ownerHomeId ? { id: ownerHomeId } : await findFirstUserHome(ownerId);
         await createUserNotification({
           userId: ownerId,
           type: "home",
@@ -270,9 +308,9 @@ export async function pairLocalDevice(userId: string, body: LocalPairDeviceInput
   };
 }
 
-export async function getPairingRequests(userId: string) {
+export async function getPairingRequests(userId: string, homeId?: string | null) {
   await expirePendingPairingRequests(new Date());
-  const requests = await findPendingPairingRequestsForOwner(userId);
+  const requests = await findPendingPairingRequestsForOwner(userId, homeId);
   return requests.map(buildPairingRequestResponse);
 }
 
@@ -332,6 +370,7 @@ export async function queueWifiConfig(
 export async function updateDeviceManagement(
   userId: string,
   body: {
+    homeId?: string | null;
     devices: Array<{
       id: string;
       sortOrder?: number;
@@ -340,15 +379,14 @@ export async function updateDeviceManagement(
     }>;
   }
 ) {
-  const ownedDevices = await findDevicesByUser(userId);
+  const home = await resolveUserHome(userId, body.homeId);
+  const ownedDevices = await findDevicesByUser(userId, home.id);
   const ownedDeviceIds = new Set(ownedDevices.map((device) => device.id));
   const roomIdsToAssign = body.devices
     .map((device) => device.roomCategoryId)
     .filter((roomId): roomId is string => Boolean(roomId));
 
   if (roomIdsToAssign.length > 0) {
-    const home = await findFirstUserHome(userId);
-    if (!home) throw new AppError("Home not found", 404);
     const rooms = await findRoomCategories(home.id);
     const ownedRoomIds = new Set(rooms.map((room) => room.id));
 

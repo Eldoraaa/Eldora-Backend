@@ -21,9 +21,31 @@ export type PairingRequestWithDevice = Prisma.TrDevicePairingRequestGetPayload<{
   include: typeof pairingRequestInclude;
 }>;
 
-export function findDevicesByUser(userId: string) {
+export function findDevicesByUser(userId: string, homeId?: string | null) {
   return prisma.msDevice.findMany({
-    where: { elderProfile: { userLinks: { some: { userId } } } },
+    where: homeId
+      ? {
+          OR: [
+            {
+              roomCategory: {
+                is: {
+                  homeId,
+                  home: { members: { some: { userId } } },
+                },
+              },
+            },
+            {
+              roomCategoryId: null,
+              elderProfile: { userLinks: { some: { userId } } },
+            },
+          ],
+        }
+      : {
+          OR: [
+            { elderProfile: { userLinks: { some: { userId } } } },
+            { roomCategory: { is: { home: { members: { some: { userId } } } } } },
+          ],
+        },
     orderBy: [{ sortOrder: "asc" }, { updatedAt: "desc" }],
     include: deviceInclude,
   });
@@ -55,11 +77,33 @@ export function createUnclaimedDevice(deviceKey: string) {
   });
 }
 
-export function findUserDevice(userId: string, deviceId: string) {
+export function findUserDevice(userId: string, deviceId: string, homeId?: string | null) {
   return prisma.msDevice.findFirst({
     where: {
       id: deviceId,
-      elderProfile: { userLinks: { some: { userId } } },
+      ...(homeId
+        ? {
+            OR: [
+              {
+                roomCategory: {
+                  is: {
+                    homeId,
+                    home: { members: { some: { userId } } },
+                  },
+                },
+              },
+              {
+                roomCategoryId: null,
+                elderProfile: { userLinks: { some: { userId } } },
+              },
+            ],
+          }
+        : {
+            OR: [
+              { elderProfile: { userLinks: { some: { userId } } } },
+              { roomCategory: { is: { home: { members: { some: { userId } } } } } },
+            ],
+          }),
     },
     include: deviceInclude,
   });
@@ -112,11 +156,20 @@ export function expirePendingPairingRequests(now: Date) {
   });
 }
 
-export function findPendingPairingRequestsForOwner(userId: string) {
+export function findPendingPairingRequestsForOwner(userId: string, homeId?: string | null) {
   return prisma.trDevicePairingRequest.findMany({
     where: {
       status: "pending",
-      device: { elderProfile: { userLinks: { some: { userId } } } },
+      device: homeId
+        ? {
+            roomCategory: {
+              is: {
+                homeId,
+                home: { members: { some: { userId } } },
+              },
+            },
+          }
+        : { elderProfile: { userLinks: { some: { userId } } } },
     },
     orderBy: { createdAt: "desc" },
     include: pairingRequestInclude,

@@ -5,6 +5,7 @@ export const pairDeviceSchema = z.object({
   deviceKey: z.string().trim().min(4, "Device code is required"),
   elderName: z.string().trim().min(2).max(80).optional(),
   deviceName: z.string().trim().min(2).max(80).optional(),
+  homeId: z.string().trim().min(1).nullable().optional(),
 });
 
 export const localPairDeviceSchema = z.object({
@@ -12,6 +13,7 @@ export const localPairDeviceSchema = z.object({
   pairingToken: productionPairingTokenSchema,
   elderName: z.string().trim().min(2).max(80).optional(),
   deviceName: z.string().trim().min(2).max(80).optional(),
+  homeId: z.string().trim().min(1).nullable().optional(),
   localIp: z.string().trim().max(45).optional(),
   batteryLevel: z.number().int().min(0).max(100).optional(),
   isCharging: z.boolean().optional(),
@@ -26,6 +28,7 @@ export const wifiCommandSchema = z.object({
 });
 
 export const deviceManagementSchema = z.object({
+  homeId: z.string().trim().min(1).nullable().optional(),
   devices: z
     .array(
       z.object({

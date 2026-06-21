@@ -112,6 +112,7 @@ export function findNotifications(
     where: {
       userId,
       ...(input.type && { type: input.type }),
+      ...(input.homeId ? { homeId: input.homeId } : {}),
     },
     orderBy: { createdAt: "desc" },
     take: input.limit ?? 50,

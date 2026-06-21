@@ -27,17 +27,14 @@ export async function getElderAnalytics(
   to: Date,
   homeId?: string | null
 ) {
-  const allDevices = await findDevicesByUser(userId);
-  const devices = allDevices.filter(
-    (d) => !homeId || d.roomCategory?.homeId === homeId
-  );
+  const devices = await findDevicesByUser(userId, homeId);
   const deviceIds = devices.map((d) => d.id);
 
   const [voiceLogs, notifications] = await Promise.all([
     deviceIds.length > 0
       ? getVoiceLogsInRange(deviceIds, from, to)
       : Promise.resolve([]),
-    getNotificationsInRange(userId, from, to),
+    getNotificationsInRange(userId, from, to, homeId),
   ]);
 
   // ── Voice per day ─────────────────────────────────────────────────────────
