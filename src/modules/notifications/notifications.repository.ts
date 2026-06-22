@@ -95,6 +95,25 @@ export function findRecentDeviceEventNotification(
   });
 }
 
+export function findRecentHomeDeviceEventNotification(
+  homeId: string,
+  deviceId: string,
+  eventType: string,
+  since: Date
+) {
+  return prisma.trNotification.findFirst({
+    where: {
+      homeId,
+      deviceId,
+      createdAt: { gte: since },
+    },
+    orderBy: { createdAt: "desc" },
+  }).then((notification) => {
+    if (!notification?.metadata || typeof notification.metadata !== "object" || Array.isArray(notification.metadata)) return null;
+    return (notification.metadata as Record<string, unknown>).eventType === eventType ? notification : null;
+  });
+}
+
 export function createNotificationResponse(input: {
   notificationId: string;
   userId: string;
@@ -104,21 +123,42 @@ export function createNotificationResponse(input: {
   return prisma.trNotificationResponse.create({ data: input });
 }
 
+export function upsertNotificationUserState(
+  notificationId: string,
+  userId: string,
+  data: { readAt?: Date | null } = {}
+) {
+  return prisma.trNotificationUserState.upsert({
+    where: { notificationId_userId: { notificationId, userId } },
+    create: { notificationId, userId, readAt: data.readAt ?? null },
+    update: data,
+  });
+}
+
+export function createNotificationUserStates(notificationId: string, userIds: string[]) {
+  return prisma.trNotificationUserState.createMany({
+    data: Array.from(new Set(userIds)).map((userId) => ({ notificationId, userId })),
+    skipDuplicates: true,
+  });
+}
+
 export function findNotifications(
   userId: string,
   input: ListNotificationsInput
 ) {
   return prisma.trNotification.findMany({
     where: {
-      userId,
       ...(input.type && { type: input.type }),
-      ...(input.homeId ? { homeId: input.homeId } : {}),
+      ...(input.homeId
+        ? { homeId: input.homeId, home: { members: { some: { userId } } } }
+        : { userId }),
     },
     orderBy: { createdAt: "desc" },
     take: input.limit ?? 50,
     include: {
       home: { select: { id: true, name: true } },
       device: { select: { id: true, deviceId: true, name: true } },
+      states: { where: { userId }, take: 1 },
       responses: { orderBy: { createdAt: "asc" } },
     },
   });
@@ -186,39 +226,62 @@ export function findDueFollowUpNotifications(userId: string, now: Date) {
 
 export function findNotificationById(userId: string, notificationId: string) {
   return prisma.trNotification.findFirst({
-    where: { id: notificationId, userId },
+    where: {
+      id: notificationId,
+      OR: [
+        { userId },
+        { home: { members: { some: { userId } } } },
+      ],
+    },
     include: {
       home: { select: { id: true, name: true } },
       device: { select: { id: true, deviceId: true, name: true } },
+      states: { where: { userId }, take: 1 },
       responses: { orderBy: { createdAt: "asc" } },
     },
   });
 }
 
-export function updateNotificationMetadata(
+export async function updateNotificationMetadata(
   userId: string,
   notificationId: string,
   metadata: Prisma.InputJsonValue
 ) {
-  return prisma.trNotification.updateMany({
-    where: { id: notificationId, userId },
-    data: {
-      readAt: new Date(),
-      metadata,
+  const result = await prisma.trNotification.updateMany({
+    where: {
+      id: notificationId,
+      OR: [
+        { userId },
+        { home: { members: { some: { userId } } } },
+      ],
     },
+    data: { metadata },
   });
+  if (result.count > 0) {
+    await upsertNotificationUserState(notificationId, userId, { readAt: new Date() });
+  }
+  return result;
 }
 
-export function markNotificationRead(userId: string, notificationId: string) {
-  return prisma.trNotification.updateMany({
-    where: { id: notificationId, userId },
-    data: { readAt: new Date() },
-  });
+export async function markNotificationRead(userId: string, notificationId: string) {
+  const notification = await findNotificationById(userId, notificationId);
+  if (!notification) return null;
+  return upsertNotificationUserState(notificationId, userId, { readAt: new Date() });
 }
 
-export function markAllNotificationsRead(userId: string) {
-  return prisma.trNotification.updateMany({
-    where: { userId, readAt: null },
-    data: { readAt: new Date() },
+export async function markAllNotificationsRead(userId: string) {
+  const notifications = await prisma.trNotification.findMany({
+    where: {
+      OR: [
+        { userId },
+        { home: { members: { some: { userId } } } },
+      ],
+    },
+    select: { id: true },
   });
+  await Promise.all(
+    notifications.map((notification) =>
+      upsertNotificationUserState(notification.id, userId, { readAt: new Date() })
+    )
+  );
 }

@@ -141,10 +141,15 @@ function sceneSchedule(scene: Awaited<ReturnType<typeof findEnabledScheduleScene
   const config = asRecord(scene.triggerConfig);
   const condition = asRecord(config.condition);
   const schedule = asRecord(condition.schedule);
+  const weekday = typeof schedule.weekday === "number" ? schedule.weekday : undefined;
+  const weekdays = Array.isArray(schedule.weekdays)
+    ? schedule.weekdays.filter((day): day is number => Number.isInteger(day) && day >= 0 && day <= 6)
+    : undefined;
   return {
     frequency: asString(schedule.frequency) ?? "daily",
     time: asString(schedule.time),
-    weekday: typeof schedule.weekday === "number" ? schedule.weekday : undefined,
+    weekday,
+    weekdays: weekdays?.length ? weekdays : weekday !== undefined ? [weekday] : undefined,
   };
 }
 
@@ -253,7 +258,7 @@ export async function processDueScheduledScenes() {
     scenes.map(async (scene) => {
       const schedule = sceneSchedule(scene);
       if (schedule.time !== currentTime) return;
-      if (schedule.frequency === "weekly" && schedule.weekday !== now.getDay()) return;
+      if (schedule.frequency === "weekly" && !(schedule.weekdays ?? []).includes(now.getDay())) return;
       const triggerConfig = asRecord(scene.triggerConfig);
       if (triggerConfig.lastRunKey === runKey) return;
 

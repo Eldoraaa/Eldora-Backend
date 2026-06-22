@@ -90,6 +90,7 @@ model MsUser {
   notificationPreference MsNotificationPreference?
   notificationDeviceTokens MsNotificationDeviceToken[]
   notifications TrNotification[]
+  notificationStates TrNotificationUserState[]
   notificationResponses TrNotificationResponse[]
   emergencyContacts MsEmergencyContact[]
   createdScenes MsScene[] @relation("SceneCreator")
@@ -405,6 +406,23 @@ model TrNotificationResponse {
   @@map("TrNotificationResponse")
 }
 
+model TrNotificationUserState {
+  id        String   @id @default(cuid())
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  notificationId String
+  notification   TrNotification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   MsUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([notificationId, userId])
+  @@index([userId, readAt])
+  @@map("TrNotificationUserState")
+}
+
 model TrNotification {
   id        String           @id @default(cuid())
   type      NotificationType
@@ -424,6 +442,7 @@ model TrNotification {
   deviceId String?
   device   MsDevice? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
 
+  states    TrNotificationUserState[]
   responses TrNotificationResponse[]
 
   @@index([userId, type, createdAt])

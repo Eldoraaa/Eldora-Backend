@@ -173,6 +173,14 @@ export function findFirstUserHome(userId: string) {
   });
 }
 
+export async function findHomeMemberUserIds(homeId: string) {
+  const members = await prisma.trHomeMember.findMany({
+    where: { homeId },
+    select: { userId: true },
+  });
+  return members.map((member) => member.userId);
+}
+
 export async function ensureDefaultRoomsForHome(homeId: string) {
   await prisma.$transaction(
     DEFAULT_HOME_ROOMS.map((room) =>

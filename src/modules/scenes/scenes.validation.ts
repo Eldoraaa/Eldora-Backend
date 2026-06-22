@@ -29,6 +29,7 @@ const sceneConditionSchema = z
         frequency: z.enum(["daily", "weekly"]),
         time: timeSchema,
         weekday: z.number().int().min(0).max(6).optional(),
+        weekdays: z.array(z.number().int().min(0).max(6)).min(1).max(7).optional(),
       })
       .optional(),
   })

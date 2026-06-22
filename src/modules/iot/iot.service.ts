@@ -2,9 +2,9 @@ import { AppError } from "@/shared/errors";
 import { hashLocalPairingToken } from "@/shared/security";
 import { DeviceTelemetry } from "@/types/iot.types";
 import { findDeviceById } from "@/modules/devices/devices.repository";
-import { findFirstUserHome } from "@/modules/home/home.repository";
-import { findRecentDeviceEventNotification } from "@/modules/notifications/notifications.repository";
-import { createUserNotification } from "@/modules/notifications/notifications.service";
+import { findFirstUserHome, findHomeMemberUserIds } from "@/modules/home/home.repository";
+import { findRecentDeviceEventNotification, findRecentHomeDeviceEventNotification } from "@/modules/notifications/notifications.repository";
+import { createHomeNotification, createUserNotification } from "@/modules/notifications/notifications.service";
 import { findEnabledScenesForHomeEvent } from "@/modules/scenes/scenes.repository";
 import { executeSceneActions } from "@/modules/scenes/scenes.service";
 import { createDeviceSpeechPayload } from "@/modules/voice/voice.service";
@@ -363,7 +363,10 @@ export async function reportDeviceOfflineEvent(
   input: DeviceOfflineEventInput
 ): Promise<void> {
   const device = await findDeviceById(deviceId);
-  const caregiverIds = device.elderProfile.userLinks.map((link) => link.userId);
+  const homeId = device.roomCategory?.homeId;
+  const caregiverIds = homeId
+    ? await findHomeMemberUserIds(homeId)
+    : device.elderProfile.userLinks.map((link) => link.userId);
   const deviceType = deviceTypeFromDevice(device);
   const fallbackTitle = deviceType === "dorashield" ? "DoraShield offline" : "DoraBot offline";
 
@@ -371,6 +374,47 @@ export async function reportDeviceOfflineEvent(
     isOnline: false,
     lastSeen: input.occurredAt ?? device.lastSeen ?? new Date(),
   });
+
+  if (homeId) {
+    const recentOffline = await findRecentHomeDeviceEventNotification(
+      homeId,
+      device.id,
+      "device_offline",
+      new Date(Date.now() - 30 * 60 * 1000)
+    );
+    if (recentOffline) return;
+
+    const scenes = await findMatchingDeviceScenes(
+      homeId,
+      "device_offline",
+      deviceType,
+      device.id
+    );
+    if (scenes.length > 0) {
+      await Promise.all(
+        scenes.map((scene) => executeSceneActions(scene, "device_offline", device.id))
+      );
+      return;
+    }
+
+    await createHomeNotification({
+      type: "device",
+      title: fallbackTitle,
+      body: `${device.name ?? fallbackTitle} has been offline for 10 minutes.`,
+      homeId,
+      deviceId: device.id,
+      metadata: {
+        eventType: "device_offline",
+        severity: "warning",
+        sound: null,
+        sceneId: null,
+        occurredAt: input.occurredAt?.toISOString() ?? new Date().toISOString(),
+        showCallAction: false,
+        followUpAt: null,
+      },
+    });
+    return;
+  }
 
   await Promise.all(
     caregiverIds.map(async (userId) => {
@@ -382,23 +426,7 @@ export async function reportDeviceOfflineEvent(
       );
       if (recentOffline) return;
 
-      const homeId = device.roomCategory?.homeId;
-      const home = homeId ? { id: homeId } : await findFirstUserHome(userId);
-      const scenes = home
-        ? await findMatchingDeviceScenes(
-            home.id,
-            "device_offline",
-            deviceType,
-            device.id
-          )
-        : [];
-      if (scenes.length > 0) {
-        await Promise.all(
-          scenes.map((scene) => executeSceneActions(scene, "device_offline", device.id))
-        );
-        return;
-      }
-
+      const home = await findFirstUserHome(userId);
       await createUserNotification({
         userId,
         type: "device",

@@ -4,6 +4,7 @@ import { getMessaging } from "@/config/firebase";
 import {
   createNotification,
   createNotificationResponse,
+  createNotificationUserStates,
   deleteNotificationDeviceToken,
   findAllDueFollowUpNotifications,
   findNotificationDeviceTokens,
@@ -23,6 +24,7 @@ import type {
 } from "./notifications.validation";
 import type { z } from "zod";
 import { respondNotificationSchema } from "./notifications.validation";
+import { findHomeMemberUserIds } from "@/modules/home/home.repository";
 
 type NotificationPreferenceRecord = Awaited<ReturnType<typeof findOrCreateNotificationPreference>>;
 
@@ -205,7 +207,7 @@ function toNotificationResponse(notification: NotificationRecord) {
     title: notification.title,
     body: notification.body,
     metadata: notification.metadata,
-    readAt: notification.readAt,
+    readAt: "states" in notification && notification.states?.[0] ? notification.states[0].readAt : notification.readAt,
     createdAt: notification.createdAt,
     home: notification.home,
     device: notification.device,
@@ -270,8 +272,26 @@ export async function listUserNotifications(
 
 export async function createUserNotification(input: CreateNotificationInput) {
   const notification = await createNotification(input);
+  await createNotificationUserStates(notification.id, [input.userId]);
   const preference = await findOrCreateNotificationPreference(input.userId);
   await sendFcmNotification(preference, notification.id, input);
+  return notification;
+}
+
+export async function createHomeNotification(input: Omit<CreateNotificationInput, "userId"> & { homeId: string; userId?: string }) {
+  const memberIds = await findHomeMemberUserIds(input.homeId);
+  if (memberIds.length === 0 && !input.userId) throw new AppError("Home has no members", 400);
+  const notification = await createNotification({
+    ...input,
+    userId: input.userId || memberIds[0]!,
+  });
+  await createNotificationUserStates(notification.id, memberIds);
+  await Promise.all(
+    memberIds.map(async (userId) => {
+      const preference = await findOrCreateNotificationPreference(userId);
+      await sendFcmNotification(preference, notification.id, { ...input, userId });
+    })
+  );
   return notification;
 }
 
