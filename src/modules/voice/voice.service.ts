@@ -1,6 +1,6 @@
 import { config } from "@/config";
 import { createDeviceCommand } from "@/modules/iot/iot.repository";
-import { createUserNotification } from "@/modules/notifications/notifications.service";
+import { createHomeNotification, createUserNotification } from "@/modules/notifications/notifications.service";
 import { findDeviceById, findDevicesByUser } from "@/modules/devices/devices.repository";
 import { findOrCreateDeviceVoiceConfig } from "@/modules/devices/voice-config.repository";
 import { AppError } from "@/shared/errors";
@@ -178,10 +178,10 @@ function detectIntent(transcript: string, sttConfidence?: number): IntentResult 
       ignored: false,
       responseText: "Okay. I will let your caregiver know.",
       notification: {
-        type: "home",
-        title: "Small help requested",
+        type: "alarm",
+        title: "Care request",
         body: "The elder asked for help with water or a glass.",
-        severity: "normal",
+        severity: "critical",
         eventType: "voice_service_request",
       },
     };
@@ -194,10 +194,10 @@ function detectIntent(transcript: string, sttConfidence?: number): IntentResult 
       ignored: false,
       responseText: "Okay. I will let your caregiver know about your medicine request.",
       notification: {
-        type: "home",
+        type: "alarm",
         title: "Medicine help requested",
         body: "The elder asked for help with medicine.",
-        severity: "warning",
+        severity: "critical",
         eventType: "voice_medicine_request",
       },
     };
@@ -262,29 +262,38 @@ export async function processVoiceText(input: ProcessVoiceTextInput) {
   }
 
   if (device && result.notification) {
-    const caregiverIds = device.elderProfile.userLinks.map((link) => link.userId);
-    await Promise.all(
-      caregiverIds.map((userId) =>
-        createUserNotification({
-          userId,
-          type: result.notification!.type,
-          title: result.notification!.title,
-          body: result.notification!.body,
-          homeId: device.roomCategory?.homeId ?? null,
-          deviceId: device.id,
-          metadata: {
-            eventType: result.notification!.eventType,
-            severity: result.notification!.severity,
-            source: "voice",
-            transcript: input.transcript,
-            intent: result.intent,
-            occurredAt: new Date().toISOString(),
-            showCallAction: result.notification!.type === "alarm",
-            followUpAt: result.notification!.type === "alarm" ? new Date(Date.now() + 5 * 60 * 1000).toISOString() : null,
-          },
-        })
-      )
-    );
+    const homeId = device.roomCategory?.homeId;
+    const notificationPayload = {
+      type: result.notification.type,
+      title: result.notification.title,
+      body: result.notification.body,
+      deviceId: device.id,
+      metadata: {
+        eventType: result.notification.eventType,
+        severity: result.notification.severity,
+        source: "voice",
+        transcript: input.transcript,
+        intent: result.intent,
+        occurredAt: new Date().toISOString(),
+        showCallAction: result.notification.type === "alarm",
+        followUpAt: result.notification.type === "alarm" ? new Date(Date.now() + 5 * 60 * 1000).toISOString() : null,
+      },
+    };
+
+    if (homeId) {
+      await createHomeNotification({ ...notificationPayload, homeId });
+    } else {
+      const caregiverIds = device.elderProfile.userLinks.map((link) => link.userId);
+      await Promise.all(
+        caregiverIds.map((userId) =>
+          createUserNotification({
+            ...notificationPayload,
+            userId,
+            homeId: null,
+          })
+        )
+      );
+    }
   }
 
   if (!device && result.notification) {
