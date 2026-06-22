@@ -16,7 +16,7 @@
 
 **The central API server for the ELDORA ecosystem — handling caregiver authentication, multi-home management, IoT device heartbeats and commands, voice intent processing, FCM push notifications, scene automation, and elder analytics.**
 
-[🌐 ELDORA Ecosystem](https://github.com/eldora-bm) · [🤖 DoraBot](https://github.com/eldora-bm/dorabot) · [🛡️ DoraShield](https://github.com/eldora-bm/dorashield) · [📱 Mobile App](https://github.com/eldora-bm/eldora-mobile)
+[🌐 ELDORA Ecosystem](https://github.com/Eldoraaa) · [🤖 DoraBot](https://github.com/Eldoraaa/dorabot) · [🛡️ DoraShield](https://github.com/Eldoraaa/dorashield) · [📱 Mobile App](https://github.com/Eldoraaa/eldora-mobile)
 
 </div>
 
@@ -296,7 +296,7 @@ VOICE_AUDIO_BASE_URL=http://localhost:8000
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/eldora-bm/eldora-backend.git
+git clone https://github.com/Eldoraaa/eldora-backend.git
 cd eldora-backend
 
 # 2. Install dependencies
