@@ -14,6 +14,7 @@ type VoiceIntent =
   | "emergency_help"
   | "fall_emergency"
   | "call_caregiver"
+  | "call_family"
   | "request_water"
   | "request_medicine"
   | "request_object"
@@ -129,18 +130,27 @@ function detectIntent(transcript: string, sttConfidence?: number): IntentResult 
     };
   }
 
-  if (text.includes("call my family") || text.includes("call my caregiver") || text.includes("call someone")) {
+  if (
+    text.includes("call my child") ||
+    text.includes("call my son") ||
+    text.includes("call my daughter") ||
+    text.includes("call my family") ||
+    text.includes("contact my family") ||
+    text.includes("call my caregiver") ||
+    text.includes("contact my caregiver") ||
+    text.includes("call someone")
+  ) {
     return {
-      intent: "call_caregiver",
+      intent: "call_family",
       confidence: 0.95,
       ignored: false,
-      responseText: "Okay. I will let your caregiver know right now.",
+      responseText: "Okay. I will notify your family right now.",
       notification: {
         type: "alarm",
-        title: "Caregiver call requested",
-        body: "The elder asked DoraBot to contact a caregiver.",
+        title: "Family call requested",
+        body: "The elder asked DoraBot to contact family or a caregiver.",
         severity: "critical",
-        eventType: "voice_call_caregiver",
+        eventType: "voice_call_family",
       },
     };
   }
