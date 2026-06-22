@@ -5,6 +5,7 @@ import { DeviceCommandType } from "../../../generated/prisma/client";
 import { findUserHomeById } from "@/modules/home/home.repository";
 import { findDevicesByUser } from "@/modules/devices/devices.repository";
 import { findRoomCategories } from "@/modules/devices/rooms.repository";
+import { createDeviceSpeechPayload } from "@/modules/voice/voice.service";
 import {
   createScene,
   deleteScene,
@@ -222,10 +223,11 @@ export async function executeSceneActions(
         });
       }
       if (type === "speak_on_dorabot" || type === "dorabot_voice_check_in") {
+        const message = asString(step.message) ?? "Your family is checking in. Are you feeling okay?";
         await createDeviceCommand(targetDeviceId, DeviceCommandType.speak_on_dorabot, {
           source: "scene",
           sceneId: scene.id,
-          message: asString(step.message) ?? "Your family is checking in. Are you feeling okay?",
+          ...(await createDeviceSpeechPayload(targetDeviceId, message)),
         });
       }
     })

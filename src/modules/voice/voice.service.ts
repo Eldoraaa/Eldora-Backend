@@ -54,6 +54,39 @@ function hasEmergencyOverride(text: string) {
   return includesAny(text, EMERGENCY_WORDS);
 }
 
+export async function createDeviceSpeechPayload(deviceId: string, message: string, required = false) {
+  if (!config.voiceAudioBaseUrl) {
+    if (required) throw new AppError("Voice service is not configured", 501);
+    return { message };
+  }
+
+  const voiceCfg = await findOrCreateDeviceVoiceConfig(deviceId);
+  const response = await fetch(`${config.voiceAudioBaseUrl}/api/test-tts`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Voice-Enabled": String(voiceCfg.enabled),
+      "X-Voice-Language": voiceCfg.language,
+      "X-Voice-TTS-Voice": voiceCfg.ttsVoice,
+      "X-Voice-Rate": voiceCfg.ttsRate,
+    },
+    body: JSON.stringify({ text: message }),
+  });
+
+  if (!response.ok) {
+    if (required) throw new AppError("Voice test failed", 502);
+    return { message };
+  }
+
+  const result = (await response.json()) as { audio_url?: string | null; audioUrl?: string | null };
+  const audioUrl = result.audio_url ?? result.audioUrl ?? null;
+  const absoluteAudioUrl = audioUrl && audioUrl.startsWith("/")
+    ? `${config.voiceAudioBaseUrl}${audioUrl}`
+    : audioUrl;
+
+  return { message, audioUrl: absoluteAudioUrl };
+}
+
 function detectIntent(transcript: string, sttConfidence?: number): IntentResult {
   const text = normalize(transcript);
   const woke = hasWakePhrase(text);
@@ -195,7 +228,7 @@ export async function processVoiceText(input: ProcessVoiceTextInput) {
       await createDeviceCommand(device.id, DeviceCommandType.speak_on_dorabot, {
         source: "voice",
         intent: result.intent,
-        message: result.responseText,
+        ...(await createDeviceSpeechPayload(device.id, result.responseText)),
       });
     }
 
@@ -214,7 +247,7 @@ export async function processVoiceText(input: ProcessVoiceTextInput) {
     await createDeviceCommand(device.id, DeviceCommandType.speak_on_dorabot, {
       source: "voice",
       intent: result.intent,
-      message: result.responseText,
+      ...(await createDeviceSpeechPayload(device.id, result.responseText)),
     });
   }
 
@@ -267,7 +300,7 @@ export async function testSpeakOnDevice(userId: string) {
   const testMessage = "Hello! I am Eldora, your voice companion. I am here whenever you need me.";
   await createDeviceCommand(device.id, DeviceCommandType.speak_on_dorabot, {
     source: "test",
-    message: testMessage,
+    ...(await createDeviceSpeechPayload(device.id, testMessage, true)),
   });
   return { deviceId: device.id, message: testMessage };
 }

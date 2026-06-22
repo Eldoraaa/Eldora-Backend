@@ -7,6 +7,7 @@ import { findRecentDeviceEventNotification } from "@/modules/notifications/notif
 import { createUserNotification } from "@/modules/notifications/notifications.service";
 import { findEnabledScenesForHomeEvent } from "@/modules/scenes/scenes.repository";
 import { executeSceneActions } from "@/modules/scenes/scenes.service";
+import { createDeviceSpeechPayload } from "@/modules/voice/voice.service";
 import { DeviceCommandType, Prisma, SceneTriggerType } from "../../../generated/prisma/client";
 import {
   createDeviceCommand,
@@ -191,30 +192,30 @@ async function queueSceneDeviceActions(
   if (!scene) return;
 
   const bindings = sceneDeviceBindings(scene.triggerConfig, scene.actions);
-  const commands: SceneDeviceCommand[] = sceneActionSteps(scene.actions).flatMap((step): SceneDeviceCommand[] => {
+  const commands: SceneDeviceCommand[] = [];
+
+  for (const step of sceneActionSteps(scene.actions)) {
     const type = asString(step.type);
     const deviceId = targetDeviceIdForAction(step, bindings, fallbackDeviceType, fallbackDeviceId);
-    if (!deviceId) return [];
+    if (!deviceId) continue;
 
     if (type === "activate_local_alarm") {
-      return [{ deviceId, commandType: DeviceCommandType.activate_local_alarm, payload: { source: "scene", sceneId: scene.id } }];
-    }
-    if (type === "speak_on_dorabot" || type === "dorabot_voice_check_in") {
-      return [
-        {
-          deviceId,
-          commandType: DeviceCommandType.speak_on_dorabot,
-          payload: {
-            source: "scene",
-            sceneId: scene.id,
-            message: asString(step.message) ?? "Your family is checking in. Are you feeling okay?",
-          },
-        },
-      ];
+      commands.push({ deviceId, commandType: DeviceCommandType.activate_local_alarm, payload: { source: "scene", sceneId: scene.id } });
     }
 
-    return [];
-  });
+    if (type === "speak_on_dorabot" || type === "dorabot_voice_check_in") {
+      const message = asString(step.message) ?? "Your family is checking in. Are you feeling okay?";
+      commands.push({
+        deviceId,
+        commandType: DeviceCommandType.speak_on_dorabot,
+        payload: {
+          source: "scene",
+          sceneId: scene.id,
+          ...(await createDeviceSpeechPayload(deviceId, message)),
+        },
+      });
+    }
+  }
 
   await Promise.all(
     commands.map((command) =>
