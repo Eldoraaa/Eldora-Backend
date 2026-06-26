@@ -5,12 +5,14 @@ import {
   deviceOfflineEventSchema,
   fallEventSchema,
   heartbeatSchema,
+  liveTelemetrySchema,
 } from "./iot.validation";
 import {
   acknowledgeCommand as acknowledgeCommandService,
   getPendingCommands,
   reportDeviceOfflineEvent,
   reportFallEvent,
+  reportLiveTelemetry,
   updateDeviceHeartbeat,
 } from "./iot.service";
 
@@ -48,4 +50,10 @@ export async function postDeviceOfflineEvent(
   const body = deviceOfflineEventSchema.parse(req.body ?? {});
   await reportDeviceOfflineEvent(req.device!.id, body);
   sendSuccess(res, null, "Device offline alert created");
+}
+
+export async function postLiveTelemetry(req: Request, res: Response): Promise<void> {
+  const body = liveTelemetrySchema.parse(req.body ?? {});
+  await reportLiveTelemetry(req.device!.id, body);
+  sendSuccess(res, null, "Live telemetry received");
 }

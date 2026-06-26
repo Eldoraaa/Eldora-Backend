@@ -13,7 +13,9 @@ import notificationRoutes from "@/modules/notifications";
 import { processAllDueFollowUps } from "@/modules/notifications/notifications.service";
 import sceneRoutes from "@/modules/scenes";
 import voiceRoutes from "@/modules/voice";
+import { processDueElderReminders } from "@/modules/voice/voice.service";
 import { analyticsRouter as analyticsRoutes } from "@/modules/analytics";
+import { attachRealtimeServer } from "@/modules/realtime/realtime.service";
 import { processDueScheduledScenes } from "@/modules/scenes/scenes.service";
 
 const app = express();
@@ -84,6 +86,7 @@ async function bootstrap(): Promise<void> {
       `[Server] Running on http://localhost:${config.port} (${config.nodeEnv})`,
     );
   });
+  const realtimeServer = attachRealtimeServer(server);
 
   const followUpInterval = setInterval(() => {
     void processAllDueFollowUps().catch((error) => {
@@ -93,6 +96,11 @@ async function bootstrap(): Promise<void> {
   const scheduledSceneInterval = setInterval(() => {
     void processDueScheduledScenes().catch((error) => {
       console.warn("[Scenes] Scheduled scene processor failed:", error);
+    });
+  }, 60_000);
+  const elderReminderInterval = setInterval(() => {
+    void processDueElderReminders().catch((error) => {
+      console.warn("[Voice] Elder reminder processor failed:", error);
     });
   }, 60_000);
   const offlineDetectorInterval = setInterval(() => {
@@ -106,7 +114,9 @@ async function bootstrap(): Promise<void> {
     console.log(`\n[Server] ${signal} received - shutting down...`);
     clearInterval(followUpInterval);
     clearInterval(scheduledSceneInterval);
+    clearInterval(elderReminderInterval);
     clearInterval(offlineDetectorInterval);
+    realtimeServer.close();
     server.close(async () => {
       await prisma.$disconnect();
       console.log("[Server] Closed");

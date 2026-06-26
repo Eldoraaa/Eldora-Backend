@@ -71,6 +71,27 @@ enum VoiceEmotionState {
   distressed
 }
 
+enum ElderReminderSource {
+  voice
+  caregiver
+  scene
+}
+
+enum ElderReminderStatus {
+  pending
+  queued
+  delivered
+  acknowledged
+  cancelled
+  failed
+  needs_confirmation
+}
+
+enum SceneReminderDeliveryMode {
+  conversation_append
+  scheduled_speak
+}
+
 // Models
 
 model MsUser {
@@ -175,6 +196,7 @@ model MsHome {
   scenes      MsScene[]
   notifications TrNotification[]
   emergencyContacts MsEmergencyContact[]
+  elderReminders TrElderReminder[]
 
   @@map("MsHome")
 }
@@ -225,6 +247,11 @@ model MsElderProfile {
 
   userLinks TrElderProfileUser[]
   devices MsDevice[]
+  voiceConversationTurns TrVoiceConversationTurn[]
+  memoryFacts MsElderMemoryFact[]
+  contextSummary MsElderContextSummary?
+  elderReminders TrElderReminder[]
+  sceneReminderDeliveries TrSceneReminderDelivery[]
 
   @@map("MsElderProfile")
 }
@@ -271,7 +298,10 @@ model MsDevice {
   pairingRequests TrDevicePairingRequest[]
   notifications   TrNotification[]
   voiceEmotionLogs TrVoiceEmotionLog[]
+  voiceConversationTurns TrVoiceConversationTurn[]
   voiceConfig     MsDeviceVoiceConfig?
+  elderReminders TrElderReminder[]
+  sceneReminderDeliveries TrSceneReminderDelivery[]
 
   @@index([sortOrder])
   @@index([roomCategoryId])
@@ -351,6 +381,7 @@ model MsScene {
 
   createdById String?
   createdBy   MsUser?   @relation("SceneCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  reminderDeliveries TrSceneReminderDelivery[]
 
   @@index([homeId, triggerType, sortOrder])
   @@index([roomCategoryId])
@@ -388,6 +419,118 @@ model TrVoiceEmotionLog {
   @@index([deviceId, createdAt])
   @@index([emotionState, createdAt])
   @@map("TrVoiceEmotionLog")
+}
+
+model TrVoiceConversationTurn {
+  id             String            @id @default(cuid())
+  transcript     String
+  responseText   String?
+  intent         String?
+  emotionState   VoiceEmotionState @default(neutral)
+  confidence     Float             @default(0)
+  responseSource String?
+  latencyMs      Float?
+  createdAt      DateTime          @default(now())
+
+  elderProfileId String
+  elderProfile   MsElderProfile @relation(fields: [elderProfileId], references: [id], onDelete: Cascade)
+
+  deviceId String
+  device   MsDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([elderProfileId, createdAt])
+  @@index([deviceId, createdAt])
+  @@map("TrVoiceConversationTurn")
+}
+
+model MsElderMemoryFact {
+  id          String   @id @default(cuid())
+  type        String
+  key         String
+  value       String
+  confidence  Float    @default(0)
+  status      String   @default("candidate")
+  lastSeenAt  DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  elderProfileId String
+  elderProfile   MsElderProfile @relation(fields: [elderProfileId], references: [id], onDelete: Cascade)
+
+  sourceTurnId String?
+
+  @@unique([elderProfileId, key])
+  @@index([elderProfileId, type, status])
+  @@map("MsElderMemoryFact")
+}
+
+model MsElderContextSummary {
+  id                String   @id @default(cuid())
+  summary           String   @default("")
+  safetySummary     String   @default("")
+  preferenceSummary String   @default("")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  elderProfileId String @unique
+  elderProfile   MsElderProfile @relation(fields: [elderProfileId], references: [id], onDelete: Cascade)
+
+  @@map("MsElderContextSummary")
+}
+
+model TrElderReminder {
+  id                String               @id @default(cuid())
+  source            ElderReminderSource  @default(voice)
+  title             String
+  message           String
+  dueAt             DateTime
+  timezone          String               @default("Asia/Jakarta")
+  recurrenceRule    String?
+  status            ElderReminderStatus  @default(pending)
+  createdFromTurnId String?
+  deliveredAt       DateTime?
+  acknowledgedAt    DateTime?
+  cancelledAt       DateTime?
+  failedAt          DateTime?
+  attemptCount      Int                  @default(0)
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  elderProfileId String
+  elderProfile   MsElderProfile @relation(fields: [elderProfileId], references: [id], onDelete: Cascade)
+
+  deviceId String
+  device   MsDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  homeId String?
+  home   MsHome? @relation(fields: [homeId], references: [id], onDelete: SetNull)
+
+  @@index([elderProfileId, status, dueAt])
+  @@index([deviceId, status, dueAt])
+  @@index([homeId, status, dueAt])
+  @@map("TrElderReminder")
+}
+
+model TrSceneReminderDelivery {
+  id             String                    @id @default(cuid())
+  deliveryMode   SceneReminderDeliveryMode
+  deliveredAt    DateTime                  @default(now())
+  acknowledgedAt DateTime?
+  createdAt      DateTime                  @default(now())
+
+  sceneId String
+  scene   MsScene @relation(fields: [sceneId], references: [id], onDelete: Cascade)
+
+  elderProfileId String
+  elderProfile   MsElderProfile @relation(fields: [elderProfileId], references: [id], onDelete: Cascade)
+
+  deviceId String
+  device   MsDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([sceneId, deliveredAt])
+  @@index([elderProfileId, deliveredAt])
+  @@index([deviceId, deliveredAt])
+  @@map("TrSceneReminderDelivery")
 }
 
 model TrNotificationResponse {

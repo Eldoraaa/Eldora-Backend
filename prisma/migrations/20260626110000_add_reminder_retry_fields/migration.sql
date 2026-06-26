@@ -1,0 +1,2 @@
+ALTER TABLE "TrElderReminder" ADD COLUMN "failedAt" TIMESTAMP(3);
+ALTER TABLE "TrElderReminder" ADD COLUMN "attemptCount" INTEGER NOT NULL DEFAULT 0;

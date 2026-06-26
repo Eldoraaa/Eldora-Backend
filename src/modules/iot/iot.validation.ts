@@ -32,3 +32,16 @@ export const fallEventSchema = z.object({
 export const deviceOfflineEventSchema = z.object({
   occurredAt: z.coerce.date().optional(),
 });
+
+export const liveTelemetrySchema = z.object({
+  batteryLevel: z.number().int().min(0).max(100).optional(),
+  isCharging: z.boolean().optional(),
+  wifiRssi: z.number().int().min(-120).max(0).optional(),
+  peakAcceleration: z.number().optional(),
+  impactSeverity: z.enum(["low", "medium", "high", "critical"]).optional(),
+  motionLevel: z.enum(["none", "low", "normal", "high"]).optional(),
+  inactivityAfterImpactMs: z.number().int().min(0).optional(),
+  sensorStatus: z.enum(["ok", "error", "calibrating"]).optional(),
+  uptimeSeconds: z.number().int().min(0).optional(),
+  occurredAt: z.coerce.date().optional(),
+});

@@ -4,7 +4,7 @@ import { AppError } from "@/shared/errors";
 import { getElderAnalytics } from "./analytics.service";
 
 export async function getElderAnalyticsController(req: Request, res: Response) {
-  const { from, to, homeId } = req.query as Record<string, string | undefined>;
+  const { from, to, homeId, deviceId } = req.query as Record<string, string | undefined>;
 
   const toDate = to ? new Date(to) : new Date();
   const fromDate = from
@@ -18,6 +18,6 @@ export async function getElderAnalyticsController(req: Request, res: Response) {
   toDate.setHours(23, 59, 59, 999);
   fromDate.setHours(0, 0, 0, 0);
 
-  const result = await getElderAnalytics(req.user!.id, fromDate, toDate, homeId ?? null);
+  const result = await getElderAnalytics(req.user!.id, fromDate, toDate, homeId ?? null, deviceId ?? null);
   sendSuccess(res, result, "Analytics retrieved");
 }

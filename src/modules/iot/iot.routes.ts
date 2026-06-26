@@ -9,6 +9,7 @@ import {
   postDeviceOfflineEvent,
   postFallEvent,
   postHeartbeat,
+  postLiveTelemetry,
 } from "./iot.controller";
 
 const router = Router();
@@ -56,6 +57,7 @@ router.post("/heartbeat", authenticateOrRegisterDevice, postHeartbeat);
 
 router.post("/events/fall", authenticateDevice, postFallEvent);
 router.post("/events/offline", authenticateDevice, postDeviceOfflineEvent);
+router.post("/telemetry/live", authenticateDevice, postLiveTelemetry);
 
 /**
  * @swagger

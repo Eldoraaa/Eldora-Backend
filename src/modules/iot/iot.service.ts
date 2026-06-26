@@ -5,10 +5,12 @@ import { findDeviceById } from "@/modules/devices/devices.repository";
 import { findFirstUserHome, findHomeMemberUserIds } from "@/modules/home/home.repository";
 import { findRecentDeviceEventNotification, findRecentHomeDeviceEventNotification } from "@/modules/notifications/notifications.repository";
 import { createHomeNotification, createUserNotification } from "@/modules/notifications/notifications.service";
+import { broadcastDeviceTelemetry } from "@/modules/realtime/realtime.service";
 import { findEnabledScenesForHomeEvent } from "@/modules/scenes/scenes.repository";
 import { executeSceneActions } from "@/modules/scenes/scenes.service";
 import { createDeviceSpeechPayload } from "@/modules/voice/voice.service";
-import { DeviceCommandType, Prisma, SceneTriggerType } from "../../../generated/prisma/client";
+import { updateElderReminderStatus } from "@/modules/voice/voice.repository";
+import { DeviceCommandType, ElderReminderStatus, Prisma, SceneTriggerType } from "../../../generated/prisma/client";
 import {
   createDeviceCommand,
   findCommandForDevice,
@@ -29,6 +31,19 @@ type FallEventInput = {
 };
 
 type DeviceOfflineEventInput = {
+  occurredAt?: Date;
+};
+
+type LiveTelemetryInput = {
+  batteryLevel?: number;
+  isCharging?: boolean;
+  wifiRssi?: number;
+  peakAcceleration?: number;
+  impactSeverity?: "low" | "medium" | "high" | "critical";
+  motionLevel?: "none" | "low" | "normal" | "high";
+  inactivityAfterImpactMs?: number;
+  sensorStatus?: "ok" | "error" | "calibrating";
+  uptimeSeconds?: number;
   occurredAt?: Date;
 };
 
@@ -53,6 +68,10 @@ function asRecord(value: unknown): JsonRecord | null {
 
 function asString(value: unknown) {
   return typeof value === "string" ? value : undefined;
+}
+
+function reminderIdFromPayload(payload: unknown) {
+  return asString(asRecord(payload)?.reminderId);
 }
 
 function asNumber(value: unknown) {
@@ -250,6 +269,29 @@ export async function updateDeviceHeartbeat(
   });
 }
 
+export async function reportLiveTelemetry(deviceId: string, telemetry: LiveTelemetryInput) {
+  const device = await findDeviceById(deviceId);
+  const occurredAt = telemetry.occurredAt ?? new Date();
+  broadcastDeviceTelemetry({
+    type: "device.telemetry",
+    homeId: device.roomCategory?.homeId ?? null,
+    deviceId: device.id,
+    payload: {
+      deviceType: deviceTypeFromDevice(device),
+      batteryLevel: telemetry.batteryLevel ?? device.batteryLevel,
+      isCharging: telemetry.isCharging ?? device.isCharging,
+      wifiRssi: telemetry.wifiRssi ?? device.wifiRssi,
+      peakAcceleration: telemetry.peakAcceleration ?? null,
+      impactSeverity: telemetry.impactSeverity ?? null,
+      motionLevel: telemetry.motionLevel ?? null,
+      inactivityAfterImpactMs: telemetry.inactivityAfterImpactMs ?? null,
+      sensorStatus: telemetry.sensorStatus ?? null,
+      uptimeSeconds: telemetry.uptimeSeconds ?? null,
+    },
+    occurredAt: occurredAt.toISOString(),
+  });
+}
+
 export async function getPendingCommands(deviceId: string) {
   const commands = await findPendingCommands(deviceId);
 
@@ -291,6 +333,16 @@ export async function acknowledgeCommand(
       ...(body.message ? { resultMessage: body.message } : {}),
     },
   });
+
+  const reminderId = reminderIdFromPayload(command.payload);
+  if (reminderId) {
+    const now = new Date();
+    await updateElderReminderStatus(reminderId, {
+      status: body.status === "applied" ? ElderReminderStatus.delivered : ElderReminderStatus.failed,
+      deliveredAt: body.status === "applied" ? now : null,
+      failedAt: body.status === "failed" ? now : null,
+    });
+  }
 }
 
 export async function processStaleDeviceOfflineEvents() {
@@ -314,45 +366,58 @@ export async function reportFallEvent(
   input: FallEventInput
 ): Promise<void> {
   const device = await findDeviceById(deviceId);
-  const caregiverIds = device.elderProfile.userLinks.map((link) => link.userId);
+  const homeId = device.roomCategory?.homeId;
+  const deviceName = device.name ?? "DoraShield";
 
+  const fallMetadata = {
+    eventType: "fall_detected",
+    severity: "critical",
+    sound: "critical_alert",
+    sceneId: null,
+    confidence: input.confidence ?? null,
+    occurredAt: input.occurredAt?.toISOString() ?? new Date().toISOString(),
+    location: input.location ?? null,
+    showCallAction: true,
+    followUpAt: null,
+  };
+
+  if (homeId) {
+    const scenes = await findMatchingDeviceScenes(
+      homeId,
+      "fall_detected",
+      "dorashield",
+      device.id
+    );
+    if (scenes.length > 0) {
+      await Promise.all(
+        scenes.map((scene) => executeSceneActions(scene, "fall_detected", device.id))
+      );
+      return;
+    }
+
+    await createHomeNotification({
+      type: "alarm",
+      title: "Fall detected",
+      body: `${deviceName} detected a fall. Check immediately.`,
+      homeId,
+      deviceId: device.id,
+      metadata: fallMetadata,
+    });
+    return;
+  }
+
+  const caregiverIds = device.elderProfile.userLinks.map((link) => link.userId);
   await Promise.all(
     caregiverIds.map(async (userId) => {
-      const homeId = device.roomCategory?.homeId;
-      const home = homeId ? { id: homeId } : await findFirstUserHome(userId);
-      const scenes = home
-        ? await findMatchingDeviceScenes(
-            home.id,
-            "fall_detected",
-            "dorashield",
-            device.id
-          )
-        : [];
-      if (scenes.length > 0) {
-        await Promise.all(
-          scenes.map((scene) => executeSceneActions(scene, "fall_detected", device.id))
-        );
-        return;
-      }
-
+      const home = await findFirstUserHome(userId);
       await createUserNotification({
         userId,
         type: "alarm",
         title: "Fall detected",
-        body: `${device.name ?? "DoraShield"} detected a fall. Check immediately.`,
+        body: `${deviceName} detected a fall. Check immediately.`,
         homeId: home?.id ?? null,
         deviceId: device.id,
-        metadata: {
-          eventType: "fall_detected",
-          severity: "critical",
-          sound: "critical_alert",
-          sceneId: null,
-          confidence: input.confidence ?? null,
-          occurredAt: input.occurredAt?.toISOString() ?? new Date().toISOString(),
-          location: input.location ?? null,
-          showCallAction: true,
-          followUpAt: null,
-        },
+        metadata: fallMetadata,
       });
     })
   );
